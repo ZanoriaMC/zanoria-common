@@ -2,6 +2,7 @@ package net.zanoria.common.game;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 
 import java.util.List;
 
@@ -19,7 +20,12 @@ public final class GameRegistrySnapshot {
         if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("Registry snapshot must not be blank");
         }
-        Snapshot snapshot = GSON.fromJson(json, Snapshot.class);
+        Snapshot snapshot;
+        try {
+            snapshot = GSON.fromJson(json, Snapshot.class);
+        } catch (JsonParseException exception) {
+            throw new IllegalArgumentException("Invalid registry snapshot JSON", exception);
+        }
         if (snapshot == null || snapshot.modes == null) {
             throw new IllegalArgumentException("Invalid registry snapshot");
         }

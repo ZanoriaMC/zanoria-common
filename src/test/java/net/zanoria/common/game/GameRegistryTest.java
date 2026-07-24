@@ -49,6 +49,17 @@ class GameRegistryTest {
     }
 
     @Test
+    void decodeRejectsMalformedJsonWithIllegalArgument() {
+        // decode() already throws IllegalArgumentException for blank input and an
+        // invalid (null) snapshot; malformed-but-non-blank JSON must fail the same
+        // way rather than leaking a Gson JsonSyntaxException.
+        assertThrows(IllegalArgumentException.class,
+                () -> GameRegistrySnapshot.decode("not json"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GameRegistrySnapshot.decode("{\"revision\":"));
+    }
+
+    @Test
     void registryRejectsInvalidPlayerBounds() {
         assertThrows(IllegalArgumentException.class, () -> new GameMode(
                 "broken", "Broken", "broken", "default",
