@@ -45,7 +45,7 @@ class GameRegistryTest {
 
         assertEquals(original.revision(), restored.revision());
         assertEquals(original.modes(), restored.modes());
-        assertEquals("RELICWARS_2V2", restored.require("2v2").id());
+        assertEquals("RELICWARS_8X2", restored.require("8x2").id());
     }
 
     @Test

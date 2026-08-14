@@ -59,10 +59,10 @@ public final class GameRegistry {
         return new GameRegistry(1, List.of(
                 new GameMode("RELICWARS_1V1", "RelicWars 1v1", "relicwars", "relicwars1v1",
                         2, 2, 1, true, List.of("1v1", "relicwars1v1", "relicwars_1v1")),
-                new GameMode("RELICWARS_2V2", "RelicWars 2v2", "relicwars", "relicwars2v2",
-                        2, 4, 2, true, List.of("2v2", "relicwars", "rw", "relicwars2v2", "relicwars_2v2")),
-                new GameMode("RELICWARS_4V4", "RelicWars 4v4", "relicwars", "relicwars4v4",
-                        2, 8, 4, true, List.of("4v4", "relicwars4v4", "relicwars_4v4"))
+                new GameMode("RELICWARS_8X2", "RelicWars 8x2", "relicwars", "relicwars8x2",
+                        8, 16, 2, true, List.of("8x2", "relicwars", "rw", "relicwars8x2", "relicwars_8x2")),
+                new GameMode("RELICWARS_4X4", "RelicWars 4v4v4v4", "relicwars", "relicwars4x4",
+                        16, 16, 4, true, List.of("4v4v4v4", "4x4", "relicwars4x4", "relicwars_4x4"))
         ));
     }
 
