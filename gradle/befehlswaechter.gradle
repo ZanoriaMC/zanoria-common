@@ -1,0 +1,142 @@
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  Befehlswaechter — Gradle-Anbindung
+//
+//  EINBINDEN in einem Plugin-Repo, in dessen build.gradle (bzw. plugin/build.gradle):
+//
+//      def waechter = file("${rootDir}/../zanoria-common/gradle/befehlswaechter.gradle")
+//      if (file("${rootDir}/../zanoria-common").isDirectory()) {
+//          if (!waechter.isFile()) {
+//              throw new GradleException(
+//                  "zanoria-common ist da, aber ${waechter} fehlt - der Befehlswaechter waere" +
+//                  " stillschweigend weg. Das ist genau die Bauart Fehler, gegen die er steht.")
+//          }
+//          apply from: waechter
+//      }
+//
+//  ⚠️ Die if/throw-Kombination ist keine Umstaendlichkeit. Ein blosses
+//  `if (waechter.isFile()) apply from: waechter` verschwindet lautlos, sobald jemand die Datei
+//  umbenennt — ein Waechter, der bei einem Tippfehler still aussetzt, ist kein Waechter
+//  (Standing Rule 16). Fehlt der ganze Geschwister-Checkout, ist das etwas anderes und darf
+//  durchgehen: dann baut jemand ohne den Stack.
+//
+//
+//  WARUM DIESE DATEI IN zanoria-common LIEGT UND NICHT JE REPO
+//  ══════════════════════════════════════════════════════════
+//  Am 2026-08-21 am Bestand erhoben: die Plugin-Repos teilen KEINE Bau-Infrastruktur. Es gibt
+//  kein buildSrc, keine Convention-Plugins, kein gemeinsames Wurzelprojekt. Verbunden sind sie
+//  ausschliesslich ueber `includeBuild('../Geschwister')` mit dependencySubstitution — und die
+//  Richtung ist je Repo verschieden (Nexus→ZanLang+zanoria-common; HeavyCrown/NexusStrike/
+//  RelicWars→ZanoriaGame+Nexus+ZanLang; Showdown/ZanoriaLobby/ZanoriaCommands→nichts).
+//
+//  ⚠️ Und `includeBuild` traegt einen Waechter NICHT. Ein zusammengesetzter Bau fuehrt vom
+//  eingebundenen Bau nur die Tasks aus, die zum Erzeugen des ersetzten Artefakts noetig sind —
+//  praktisch `jar`. Ein `check` im Nachbarn laeuft nie mit. Ein Waechter in zanoria-common als
+//  TASK waere damit unerreichbar; als SKRIPT, das der Verbraucher anwendet, laeuft er in dessen
+//  eigenem Bau. Das ist der ganze Unterschied.
+//
+//  Die dritte Moeglichkeit — ein veroeffentlichtes Gradle-Plugin aus mavenLocal — ist
+//  ausdruecklich verworfen: Standing Rule 17 beschreibt genau den Schaden. Ein Artefakt mit
+//  gleichem Namen kann Wochen alt sein, der Bau bleibt gruen, und der Waechter prueft eine
+//  Fassung, die niemand mehr liest. Ein Dateipfad kann nicht veralten.
+//
+//  DER PREIS, offen benannt
+//  ────────────────────────
+//  * Die Repos muessen Geschwister sein. Das setzt der Stack ohnehin ueberall voraus
+//    (`file('../ZanLang').isDirectory()` steht in acht settings.gradle).
+//  * Fehlt zanoria-common ganz, faellt der Waechter weg. Ein CI-Lauf, der ihn haben will, muss
+//    zanoria-common mit auschecken — dieselbe Auflage, die fuer ZanoriaGame schon gilt.
+//  * Er braucht Python 3 auf dem Bauwirt. Der Stack setzt das an anderer Stelle bereits voraus
+//    (Zanoria-Docs/analysis/*.py). Fehlt es, bricht der Task ab — er faellt NICHT auf gruen
+//    zurueck.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def waechterSkript = file("${project.rootDir}/../zanoria-common/tools/befehlswaechter.py")
+
+// ⚠️ Absoluter Pfad, nie ein relativer. Standing Rule 16 nennt vier Vorfaelle, in denen ein
+// relativer Aufruf ins Leere lief und der Lauf trotzdem gruen meldete.
+def waechterPfad = waechterSkript.absolutePath
+
+tasks.register("befehlswaechter") {
+    group = "verification"
+    description = "Faengt Befehle, die deklariert oder implementiert sind und niemand anmeldet."
+
+    // ⚠️ Kein `inputs`/`outputs` und ausdruecklich kein UP-TO-DATE. Standing Rule 16, Nachtrag
+    // 2026-08-07: `BUILD SUCCESSFUL > Task :x UP-TO-DATE` ist die teuerste Gruenmeldung im
+    // Haus — der Rueckgabecode war 0 und das Werkzeug lief nicht. Dieser Task ist billig
+    // (Sekundenbruchteile ueber ein paar hundert Dateien); er laeuft lieber immer.
+    outputs.upToDateWhen { false }
+
+    doLast {
+        if (!waechterSkript.isFile()) {
+            throw new GradleException(
+                "Befehlswaechter: ${waechterPfad} fehlt. Kein Urteil ist nicht gruen.")
+        }
+
+        // ⚠️ Der Interpreter wird gesucht, nicht geraten — und wenn keiner antwortet, BRICHT es
+        // ab. Standing Rule 28: `shell=true` startete unter Windows cmd.exe, der Lauf fand nie
+        // statt, und die Auswertung las die Berichte des vorigen Laufs. Hier gibt es keine
+        // alten Berichte, aber dieselbe Falle: ein fehlender Interpreter darf nicht wie ein
+        // bestandener Lauf aussehen.
+        def kandidaten = System.getProperty("os.name").toLowerCase().contains("win")
+                ? ["py", "python", "python3"]
+                : ["python3", "python"]
+        def interpreter = null
+        for (k in kandidaten) {
+            try {
+                def probe = new ByteArrayOutputStream()
+                def r = project.exec {
+                    commandLine k, "--version"
+                    standardOutput = probe
+                    errorOutput = probe
+                    ignoreExitValue = true
+                }
+                if (r.exitValue == 0) { interpreter = k; break }
+            } catch (ignored) { /* naechster Kandidat */ }
+        }
+        if (interpreter == null) {
+            throw new GradleException(
+                "Befehlswaechter: kein Python 3 gefunden (versucht: ${kandidaten.join(', ')})." +
+                " Der Waechter faellt NICHT auf gruen zurueck — ein Bau ohne Pruefung ist" +
+                " keine bestandene Pruefung.")
+        }
+
+        def ausgabe = new ByteArrayOutputStream()
+        def ergebnis = project.exec {
+            commandLine interpreter, waechterPfad, project.rootDir.absolutePath
+            standardOutput = ausgabe
+            errorOutput = ausgabe
+            ignoreExitValue = true
+        }
+        def text = ausgabe.toString("UTF-8")
+        logger.lifecycle(text)
+
+        // ⚠️ Der Rueckgabecode entscheidet, nicht der Text. Standing Rule 24: in einer Pipe
+        // entscheidet der letzte Befehl, nicht der wichtige — hier wird der Wert getrennt
+        // festgehalten und das Urteil daran gehaengt.
+        switch (ergebnis.exitValue) {
+            case 0:
+                break
+            case 1:
+                throw new GradleException(
+                    "Befehlswaechter: Funde vorhanden — siehe oben. Ein Befehl, der deklariert" +
+                    " oder implementiert ist und den niemand anmeldet, faellt zur Laufzeit" +
+                    " NICHT als 'Befehl fehlt' auf. Deshalb faellt er hier.")
+            case 2:
+                throw new GradleException(
+                    "Befehlswaechter: NICHTS GEPRUEFT (Rueckgabe 2). Er hat keinen einzigen" +
+                    " Plugin-Deskriptor gefunden. Das ist kein bestandener Lauf — entweder" +
+                    " zeigt der Pfad falsch, oder die paper-plugin.yml liegt nicht unter" +
+                    " src/*/resources/.")
+            default:
+                throw new GradleException(
+                    "Befehlswaechter: unerwartete Rueckgabe ${ergebnis.exitValue}.")
+        }
+    }
+}
+
+// ⚠️ An `check` haengen, nicht an `build`. Damit greift er auch bei `./gradlew check` und bei
+// jedem CI-Lauf, der test faehrt — und er haelt den Jar-Bau nicht auf, wenn jemand bewusst nur
+// assemblen will.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn "befehlswaechter"
+}
