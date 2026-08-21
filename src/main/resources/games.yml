@@ -1,0 +1,78 @@
+# ⚠️ DIES IST DIE EINZIGE QUELLE DES KANONS. Sie wird in JEDES Jar geschattet, das
+# zanoria-common bindet - heute Nexus (Spielserver, Lobby) und NexusService (Steuerungsebene).
+# Beide schreiben sie beim Start auf ihre Betriebsdatei, aber NUR bei echt hoeherer Revision
+# (GamesKanonAbgleich). Es gibt keine zweite Fassung mehr, die von Hand nachgezogen werden muss.
+#
+# ⚠️ revision MUSS steigen, sobald sich unten irgendetwas aendert.
+# Wer den Inhalt aendert und die Zahl stehen laesst, erreicht KEINEN Knoten: der Proxy weist den
+# Schnappschuss ab (ProxyGameRegistry.apply vergleicht mit <=), und der Abgleich laesst jede
+# Betriebsdatei unangetastet. Repo, Bau und Auslieferung melden dabei durchgehend Erfolg.
+# Genau das war am 2026-08-14 der Fall: games-snapshot.json stand auf 5 mit acht Modi, diese
+# Datei auf 5 mit sieben. GamesRevisionFolgtDemInhaltTest haelt die Regel fest.
+revision: 9
+modes:
+  # ⚠️ TESTMODUS - nicht im Kanon. Die Spec kennt 4v4v4v4 und (spaeter) 8x 2v2.
+  # Bleibt vorerst zum Testen und kommt wieder weg. QueueType.TESTMODI haelt das fest.
+  - id: RELICWARS_1V1
+    displayName: RelicWars 1v1 (Test)
+    template: relicwars
+    mode: relicwars1v1
+    neededPlayers: 2
+    maxPlayers: 2
+    teamSize: 1
+    enabled: true
+    aliases: [1v1, relicwars1v1, relicwars_1v1]
+  # Countdown ab 8 (4 Teams a 2), Nachzuegler fuellen bis 16 (8 Teams a 2) auf.
+  - id: RELICWARS_8X2
+    displayName: RelicWars 8x2
+    template: relicwars
+    mode: relicwars8x2
+    neededPlayers: 8
+    maxPlayers: 16
+    teamSize: 2
+    enabled: true
+    aliases: [8x2, relicwars, rw, relicwars8x2, relicwars_8x2]
+  - id: RELICWARS_4X4
+    displayName: RelicWars 4v4v4v4
+    template: relicwars
+    mode: relicwars4x4
+    neededPlayers: 16
+    maxPlayers: 16
+    teamSize: 4
+    enabled: true
+    aliases: [4v4v4v4, 4x4, relicwars4x4, relicwars_4x4]
+  # 2 Teams a 4 - dieselbe Lesart wie RELICWARS_8X2 (8 Teams a 2) und RELICWARS_4X4.
+  # ⚠️ Hiess bis 2026-08-14 CORECLASH_4V4 mit der Kennung coreclash_4v4. Der Unterstrich war
+  # die einzige Kennung im Kanon, die einen trug; '4v4' benannte ausserdem die Teamgroesse
+  # statt der Aufstellung und las sich wie RelicWars' 4v4v4v4.
+  - id: CORECLASH_2X4
+    displayName: Core Clash 2x4
+    template: coreclash
+    mode: coreclash2x4
+    neededPlayers: 8
+    maxPlayers: 8
+    teamSize: 4
+    enabled: true
+    aliases: [2x4, coreclash, cc, coreclash2x4, coreclash_2x4]
+  # 2 Teams a 4 - dieselbe Aufstellung wie CORECLASH_2X4, anderer Modus.
+  # ⚠️ enabled: true seit revision 9. Vorher stand hier false, weil ein Modus, den die
+  # Queue anbietet und kein Server annimmt, Matches bildet, die niemand spielt (Audit
+  # Rang 12). Was das false aufgehoben hat, ist am 2026-08-16 auf Platte nachgemessen:
+  # templates/nexusstrike/servers/2x4/mode.yml traegt id: nexusstrike2x4 (danach sucht
+  # PelicanRuntimeProvisioner.findModeTemplate), plugins/ traegt NexusStrike.jar, und
+  # templates/nexusstrike/maps/arena_default ist bespielt - ohne Karte meldet sich der
+  # Server gar nicht erst an.
+  # ⚠️ WER DIESEN EINTRAG ANFASST, FASST ZWEI DATEIEN AN. Der Control Plane liest NICHT
+  # diese Datei, sondern GAMES_FILE (Standard /home/corwis/zanoria/games.yml,
+  # ControlPlaneConfig:83), und NUR daraus baut QueueType.install die Modi. Steht der
+  # Modus hier auf true und dort nicht, gibt es ihn im Netz nicht: kein QueueType, keine
+  # Provisionierung, ZANORIA_QUEUE_TYPE wird gar nicht erst gesetzt - und nichts wird rot.
+  - id: NEXUSSTRIKE_2X4
+    displayName: Nexus Strike 2x4
+    template: nexusstrike
+    mode: nexusstrike2x4
+    neededPlayers: 8
+    maxPlayers: 8
+    teamSize: 4
+    enabled: true
+    aliases: [nexusstrike, ns, nexusstrike2x4, nexusstrike_2x4]
