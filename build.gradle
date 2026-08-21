@@ -12,6 +12,11 @@ repositories {
 
 dependencies {
     api 'com.google.code.gson:gson:2.10.1'
+    // ⚠️ api und nicht implementation: der Lader gibt snakeyaml-Typen nicht nach aussen, aber
+    // beide Konsumenten fuehren snakeyaml ohnehin selbst. api haelt die Fassung an EINER Stelle
+    // fest - zwei Konsumenten mit zwei Fassungen desselben Parsers waren hier schon einmal die
+    // Ursache eines Unterschieds, der erst im Betrieb auffiel.
+    api 'org.yaml:snakeyaml:2.2'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
 }
 
