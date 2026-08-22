@@ -45,7 +45,7 @@ Einzelmutationen, Katalog in ``mutationskatalog.py``): 11 rot, ELF still. Drei B
     der Ausgabe steht. Ein Waechter, der ZUSAETZLICH drei Falschfunde meldet, kam damit als
     "bestanden" durch. Ueber-Meldung war voellig unsichtbar: Erzeugungsregex zu streng,
     ``deklarierte_befehle`` leer, ``aliases`` nicht gezaehlt, YAML-Kommentare nicht abgetrennt -
-    alles gruen. SCHADEN: ein zu strenger Waechter faerbt acht Repos rot ueber Code, der
+    alles gruen. SCHADEN: ein zu strenger Waechter faerbt neun Repos rot ueber Code, der
     richtig ist; wer das ein paarmal erlebt, schaltet ihn ab oder deckt ihn mit Ausnahmen zu,
     und dann faengt er auch die echten Faelle nicht mehr.
     Deshalb jetzt: EIN sauberer Baum - und er ist ausdruecklich ANSPRUCHSVOLL. Ein Baum, der nur
@@ -66,7 +66,7 @@ Einzelmutationen, Katalog in ``mutationskatalog.py``): 11 rot, ELF still. Drei B
   * ⚠️ DIE MASCHINERIE UM DIE PROBEN war Prosa. "Ohne Begruendung gilt die Zeile nicht" und die
     Dublettenerkennung standen als Satz im Kopf des Waechters und wurden von nichts ausgefuehrt.
     Ebenso die Stillegarantie selbst - ``return 2`` zu ``return 0`` blieb still, und das ist der
-    teuerste Fall ueberhaupt: acht Repos melden einen BESTANDENEN Lauf ueber NULL gesehene
+    teuerste Fall ueberhaupt: neun Repos melden einen BESTANDENEN Lauf ueber NULL gesehene
     Deskriptoren.
 
 WER RUFT DIESES SKRIPT
@@ -516,7 +516,7 @@ public record Pongbefehl(String antwort) implements BasicCommand {
     },
 
     # ── Die Stillegarantie ───────────────────────────────────────────────────
-    # ⚠️ DER TEUERSTE FALL. Meldet der Waechter hier gruen, melden acht Repos einen bestandenen
+    # ⚠️ DER TEUERSTE FALL. Meldet der Waechter hier gruen, melden neun Repos einen bestandenen
     # Lauf ueber NULL gesehene Deskriptoren - und niemand erfaehrt es, weil nichts rot wird.
     {
         "name": "ein Baum ganz ohne Deskriptor ist NICHT bestanden",
@@ -941,7 +941,7 @@ def main() -> int:
             # Marke: sie muss verschwinden. Bei EINEM Fall geht das nicht, und der Grund ist der
             # Fall selbst - mutiert man ``return 2`` zu ``return 0``, druckt der Waechter seine
             # Blindstellen WEITER und aendert nur das Urteil. Genau das ist der Schaden: die
-            # Ausgabe sieht aus wie vorher, Gradle liest aber die Rueckgabe, und acht Repos
+            # Ausgabe sieht aus wie vorher, Gradle liest aber die Rueckgabe, und neun Repos
             # bauen gruen. Ein Marken-Test haette diese Mutation fuer gefangen erklaert, obwohl
             # sie durchgeht - deshalb prueft dieser Fall die RUECKGABE.
             if "mutant_rc" in fall:

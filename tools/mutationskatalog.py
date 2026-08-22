@@ -10,9 +10,9 @@ abzusichern. Diese Behauptung ist selbst eine Behauptung. Dieses Werkzeug misst 
 beschaedigten Waechter laufen. Wird der Lauf rot, ist die Beschaedigung GEFANGEN. Bleibt er
 gruen, ist sie STILL - und dann deckt genau diese Stelle des Waechters niemand ab.
 
-⚠️ SCHADEN einer stillen Mutation, konkret: der Waechter haengt in acht Repos. Verrutscht dort
-eine Regex oder kippt eine Bedingung, meldet er in allen acht "keine Funde" und Rueckgabe 0 -
-acht gruene Baeume ueber ungesehenem Befehlscode, kein Log, keine Warnung. Eine stille Mutation
+⚠️ SCHADEN einer stillen Mutation, konkret: der Waechter haengt in neun Repos. Verrutscht dort
+eine Regex oder kippt eine Bedingung, meldet er in allen neun "keine Funde" und Rueckgabe 0 -
+neun gruene Baeume ueber ungesehenem Befehlscode, kein Log, keine Warnung. Eine stille Mutation
 ist also nicht "ein Testloch", sondern die exakte Bauart Fehler, gegen die der Waechter steht.
 
 ⚠️ DER KATALOG IST EINE REKONSTRUKTION. Am 2026-08-22 wurden schon einmal 22 Mutationen von Hand
@@ -149,7 +149,7 @@ KATALOG: list[tuple[str, str, str, str]] = [
 
     # ── Die Stillegarantie des Waechters selbst ──────────────────────────────
     # ⚠️ Der Kern. Wird hier 2 zu 0, meldet der Waechter einen BESTANDENEN Lauf ueber NULL
-    # gesehene Deskriptoren - in allen acht Repos zugleich.
+    # gesehene Deskriptoren - in allen neun Repos zugleich.
     ("M21", "Stillegarantie: NICHTS GEPRUEFT meldet bestanden",
      '            print(z, file=sys.stderr)\n        return 2',
      '            print(z, file=sys.stderr)\n        return 0'),
@@ -225,7 +225,7 @@ def main(argv: list[str]) -> int:
             else:
                 print(f"  ⚠️ STILL   {kennung}  {was}")
                 print(f"             Gegenprobe rc=0, Selbsttest rc=0 - der beschaedigte"
-                      f" Waechter meldet in acht Repos weiter gruen.")
+                      f" Waechter meldet in neun Repos weiter gruen.")
                 still.append((kennung, was))
                 if laut:
                     for z in (aus_g + aus_s).splitlines():

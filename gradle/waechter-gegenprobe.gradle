@@ -2,19 +2,19 @@
 //  Waechter-Gegenprobe — Gradle-Anbindung
 //
 //  Diese Datei haengt ``tools/waechter-gegenprobe.py`` an den ``check`` von zanoria-common.
-//  Sie wird NUR hier angewendet, nicht in den acht Verbrauchern. Warum, steht unten.
+//  Sie wird NUR hier angewendet, nicht in den neun Verbrauchern. Warum, steht unten.
 //
 //
 //  WAS DIE GEGENPROBE IST — und warum sie ohne Anbindung wertlos war
 //  ═════════════════════════════════════════════════════════════════
-//  ``tools/befehlswaechter.py`` haengt ueber ``gradle/befehlswaechter.gradle`` in ACHT Repos.
+//  ``tools/befehlswaechter.py`` haengt ueber ``gradle/befehlswaechter.gradle`` in NEUN Repos.
 //  Er prueft dort fremden Code. Wer prueft IHN?
 //
 //  ⚠️ Bis zum 2026-08-22: niemand. Die Gegenprobe lag als Skript daneben und WURDE VON NICHTS
 //  GERUFEN. Sie ist der einzige Beleg, dass die fuenf Proben im Waechter ueberhaupt etwas
 //  pruefen — und genau dieser Beleg wurde nie erbracht.
 //  ⚠️ SCHADEN, konkret: verrutscht in einer Probe die Regex oder kippt eine Bedingung, meldet
-//  der Waechter in allen acht Repos "keine Funde" und Rueckgabe 0. Acht gruene Baeume ueber
+//  der Waechter in allen neun Repos "keine Funde" und Rueckgabe 0. Neun gruene Baeume ueber
 //  einer Pruefung, die nichts mehr prueft. Kein Log, keine Warnung, kein Unterschied — das ist
 //  dieselbe Bauart Fehler, gegen die der Waechter selbst steht.
 //
@@ -31,12 +31,12 @@
 //  FUER zentral
 //   * SCHICHT. Der Waechter prueft den Code des VERBRAUCHERS — er gehoert in dessen Bau. Die
 //     Gegenprobe prueft den Code von zanoria-common — sie gehoert in DESSEN Bau. Ein roter
-//     NexusStrike-Lauf wegen einer verrutschten Regex in einem neunten Repo schickt den, der
+//     NexusStrike-Lauf wegen einer verrutschten Regex in einem zehnten Repo schickt den, der
 //     ihn debuggt, in den falschen Baum. Genau davor warnt ``befehlswaechter.gradle`` schon in
 //     eigener Sache ("faellt es in einem fremden Baum und sieht dort wie ein neuer Fehler aus").
 //   * Der Gegenstand aendert sich nur hier. Die Gegenprobe misst eine Eigenschaft von
 //     ``tools/befehlswaechter.py``. Diese Datei aendert sich, wenn zanoria-common sich aendert —
-//     nicht, wenn NexusStrike sich aendert. Achtmal je Commit dasselbe Invariant messen ist
+//     nicht, wenn NexusStrike sich aendert. Neunmal je Commit dasselbe Invariant messen ist
 //     nicht sparsam, sondern schlicht am falschen Ausloeser.
 //   * ⚠️ ZURUECKGEZOGEN am 2026-08-22 — hier stand "ES LAEUFT WIRKLICH, zanoria-common hat eine
 //     CI (``.github/workflows/ci.yml``, push auf main + jeder PR)". Die Datei gibt es, der
@@ -45,9 +45,9 @@
 //     ZanoriaGame 14 ...), letzter gepushter Stand 2026-07-24. Ein Ausloeser, den niemand
 //     ausloest, ist genau die Bauart Zusicherung, gegen die dieses ganze Bauwerk steht — und er
 //     hat hier eine Entscheidung getragen. Was von dem Punkt bleibt: von den neun Verbrauchern
-//     haben nur drei ueberhaupt eine CI-Datei (Nexus, RelicWars, CoreClash). Das ist ein
+//     haben nur vier ueberhaupt eine CI-Datei (Nexus, RelicWars, CoreClash, ZanoriaGame). Das ist ein
 //     Argument gegen die Anbindung je Verbraucher, aber KEINES fuer die Wirksamkeit dieser hier.
-//   * Eine Aenderung an ``befehlswaechter.gradle`` trifft alle acht zugleich. Diese hier trifft
+//   * Eine Aenderung an ``befehlswaechter.gradle`` trifft alle neun zugleich. Diese hier trifft
 //     ein Repo.
 //
 //  GEGEN zentral — der Preis, benannt statt weggelassen
@@ -62,10 +62,10 @@
 //     in den neun Verbrauchern, sondern die Frage, OB sie fuer den dort angewandten Waechter je
 //     gelaufen ist. Die Arbeitsweise ist damit eine Maschine.
 //
-//  VERWORFEN: je Verbraucher zusaetzlich. Das haette den Preis oben bezahlt, aber acht Repos an
+//  VERWORFEN: je Verbraucher zusaetzlich. Das haette den Preis oben bezahlt, aber neun Repos an
 //  ein Ergebnis gehaengt, das keiner von ihnen beeinflussen kann. Zusaetzlich faellt die
 //  Gegenprobe absichtlich auch dann rot, wenn ihr Mutationsanker im Waechter nicht mehr steht
-//  ("NICHT GELAUFEN") — ein sauberer Umbau des Waechters wuerde damit acht fremde Baeume roeten,
+//  ("NICHT GELAUFEN") — ein sauberer Umbau des Waechters wuerde damit neun fremde Baeume roeten,
 //  bevor irgendwer den Anker nachzieht.
 //
 //
@@ -73,7 +73,7 @@
 //  ═══════════════════════════════════════════════════════════════════════
 //  Gemessen wird mit ``tools/mutationskatalog.py``: 22 Beschaedigungen einzeln in den Waechter
 //  gesetzt, danach je Gegenprobe UND Selbsttest gegen den beschaedigten Waechter. Rot heisst
-//  gefangen, gruen heisst STILL — und still heisst: acht Repos bauen weiter gruen ueber einer
+//  gefangen, gruen heisst STILL — und still heisst: neun Repos bauen weiter gruen ueber einer
 //  Pruefung, die an dieser Stelle nichts mehr prueft.
 //
 //    VORHER  (Stand des Vormittags)   11 gefangen, 11 STILL
@@ -93,7 +93,7 @@
 //
 //  ⚠️ Die Stillegarantie ist der teuerste Fall und deshalb hier ausdruecklich: wurde
 //  ``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, blieben Gegenprobe UND Selbsttest gruen,
-//  waehrend alle acht Repos einen BESTANDENEN Lauf ueber NULL gesehene Deskriptoren melden.
+//  waehrend alle neun Repos einen BESTANDENEN Lauf ueber NULL gesehene Deskriptoren melden.
 //  Sie ist jetzt vierfach: kein Deskriptor, Wurzel ohne Deskriptor, keine Java-Datei, Modul
 //  ohne Quellen. Und ihr Giftbaum prueft die RUECKGABE, nicht den Text — der Mutant druckt die
 //  Warnung naemlich weiter und aendert nur das Urteil.
@@ -128,14 +128,14 @@ tasks.register("waechterGegenprobe") {
     doLast {
         if (!gegenprobeSkript.isFile()) {
             throw new GradleException(
-                "Waechter-Gegenprobe: ${gegenprobePfad} fehlt. Der Befehlswaechter haengt in acht" +
+                "Waechter-Gegenprobe: ${gegenprobePfad} fehlt. Der Befehlswaechter haengt in neun" +
                 " Repos und waere damit wieder unbelegt. Kein Urteil ist nicht gruen.")
         }
         def waechterSkript = file("${project.rootDir}/tools/befehlswaechter.py")
         if (!waechterSkript.isFile()) {
             throw new GradleException(
                 "Waechter-Gegenprobe: ${waechterSkript} fehlt — der Gegenstand der Pruefung ist" +
-                " weg. Acht Verbraucher wenden dieses Skript an; ohne es brechen sie.")
+                " weg. Neun Verbraucher wenden dieses Skript an; ohne es brechen sie.")
         }
 
         // ⚠️ Der Interpreter wird gesucht, nicht geraten, und wenn keiner antwortet, BRICHT es
@@ -181,7 +181,7 @@ tasks.register("waechterGegenprobe") {
                 throw new GradleException(
                     "Waechter-Gegenprobe: mindestens eine Probe des Befehlswaechters ist" +
                     " GEFALLEN — siehe oben. Entweder schlaegt sie auf ihrem Giftbaum nicht mehr" +
-                    " an (dann ist sie blind und acht Repos bauen gruen ueber ungesehenem" +
+                    " an (dann ist sie blind und neun Repos bauen gruen ueber ungesehenem" +
                     " Befehlscode), oder ihre Entfernung aendert nichts (dann kam der Fund von" +
                     " woanders und die Zeile ist Deko), oder ihr Mutationsanker steht nicht mehr" +
                     " im Waechter (dann gibt es kein Urteil, und kein Urteil ist nicht gruen).")
@@ -225,7 +225,7 @@ tasks.register("waechterSelbsttest") {
         def waechterSkript = file("${project.rootDir}/tools/befehlswaechter.py")
         if (!waechterSkript.isFile()) {
             throw new GradleException(
-                "Waechter-Selbsttest: ${waechterSkript} fehlt. Acht Verbraucher wenden dieses" +
+                "Waechter-Selbsttest: ${waechterSkript} fehlt. Neun Verbraucher wenden dieses" +
                 " Skript an; kein Urteil ist nicht gruen.")
         }
 
@@ -272,7 +272,7 @@ tasks.register("waechterSelbsttest") {
         if (ergebnis.exitValue != 0) {
             throw new GradleException(
                 "Waechter-Selbsttest: mindestens ein Fall GEFALLEN (Rueckgabe" +
-                " ${ergebnis.exitValue}) — siehe oben. Der Waechter haengt in acht Repos;" +
+                " ${ergebnis.exitValue}) — siehe oben. Der Waechter haengt in neun Repos;" +
                 " faellt hier die Gegenrichtung, schwaerzt er dort Sauberes an, und faellt eine" +
                 " Probe, baut dort etwas gruen ueber ungesehenem Befehlscode.")
         }
@@ -308,11 +308,11 @@ tasks.register("waechterSelbsttest") {
 //  ``befehlswaechter.gradle`` — angewendet in ALLEN neun Verbrauchern — bildet denselben
 //  Fingerabdruck und vergleicht. Weicht er ab, faellt der Verbraucher-Bau.
 //
-//  ⚠️ Damit ist der Ausloeser dort, wo die Baeufe sind, OHNE die Gegenprobe achtfach zu fahren.
+//  ⚠️ Damit ist der Ausloeser dort, wo die Baeufe sind, OHNE die Gegenprobe neunfach zu fahren.
 //  Der Verbraucher rechnet einen SHA-256 ueber 68 kB — Bruchteile einer Millisekunde, kein
 //  Unterprozess, keine 22 Mutanten.
 //
-//  ⚠️ WARUM DAS ETWAS ANDERES IST ALS DIE VERWORFENE ACHTFACHE ANBINDUNG (Absatz oben):
+//  ⚠️ WARUM DAS ETWAS ANDERES IST ALS DIE VERWORFENE NEUNFACHE ANBINDUNG (Absatz oben):
 //  Verworfen wurde, die Verbraucher an das ERGEBNIS der Gegenprobe zu haengen — die faellt auch
 //  aus Gruenden, die kein Verbraucher beeinflussen kann (fehlender Mutationsanker, kein Python,
 //  ein halb umgebauter Waechter), und schickt den, der sie debuggt, in den falschen Baum. Der

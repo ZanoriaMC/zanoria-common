@@ -1064,7 +1064,7 @@ def selbsttest_stille() -> tuple[int, int]:
     Das ist der Unterschied, der zaehlt: die Mutation, gegen die dieser Abschnitt steht, aendert
     nicht die Erkennung, sondern das Urteil - ``return 2`` zu ``return 0``. Eine Zusicherung auf
     ``blindstellen(e) != []`` waere davon voellig unberuehrt geblieben und haette gruen
-    gemeldet, waehrend acht Repos einen bestandenen Lauf ueber null Deskriptoren drucken.
+    gemeldet, waehrend neun Repos einen bestandenen Lauf ueber null Deskriptoren drucken.
     """
     import contextlib
 
@@ -1128,7 +1128,7 @@ def selbsttest_stille() -> tuple[int, int]:
 
     # 5  ⚠️ Die Gegenrichtung, und sie ist nicht optional. Ohne sie duerfte blindstellen()
     #    einfach IMMER etwas zurueckgeben - alle vier Faelle oben blieben "bestanden", und der
-    #    Waechter waere in allen acht Repos dauerhaft rot, ohne dass irgendetwas fehlt.
+    #    Waechter waere in allen neun Repos dauerhaft rot, ohne dass irgendetwas fehlt.
     def bau_gesund(w):
         _schreibe(os.path.join(w, "src", "main", "resources", "paper-plugin.yml"), PAPER_SAUBER)
         _schreibe(os.path.join(w, "src", "main", "java", "net", "probe", "Probe.java"),
