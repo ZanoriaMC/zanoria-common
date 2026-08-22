@@ -39,10 +39,15 @@ Gegenprobe NICHT deckt.
 Still bleiben unter anderem: jede Ueber-Meldung (es gibt hier KEINEN Fall der Gegenrichtung -
 Kommentarabtrennung aus, ``deklarierte_befehle`` leer, ``aliases`` nicht gezaehlt: alles gruen),
 halbe Toetungen (D ohne die onTabComplete-Haelfte, E ohne CommandExecutor/TabExecutor/
-TabCompleter, E ohne ``record``), die Ausnahmedatei - und die Stillegarantie des Waechters
-selbst: wird sein ``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, bleiben diese Gegenprobe UND
+TabCompleter, E ohne ``record``) - und die Stillegarantie des Waechters selbst: wird sein
+``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, bleiben diese Gegenprobe UND
 ``befehlswaechter.py --selbsttest`` gruen, waehrend alle acht Verbraucher einen bestandenen Lauf
 ueber null gesehene Deskriptoren melden.
+
+NACHTRAG 2026-08-22: die Ausnahmedatei stand bis heute in derselben Liste. Sie steht jetzt nicht
+mehr darin - zwei Faelle decken sie ab (``UNTERDRUECKT`` und ``VERALTET``, siehe FAELLE unten).
+⚠️ Nicht gedeckt bleibt die dritte Lage ``UNGEPRUEFT``; der Grund steht als Kommentar direkt
+unter FAELLE, und ``befehlswaechter.py --selbsttest`` faengt sie.
 """
 
 from __future__ import annotations
@@ -86,9 +91,17 @@ public final class Pingbefehl implements BasicCommand {
 """
 
 
+AUSNAHME_PFAD = "src/main/java/net/probe/Pingbefehl.java"
+AUSNAHME_BEGRUENDUNG = "Altlast vom 2026-08-21, Corwis entscheidet."
+
 # Je Fall: (Kennung, Deskriptorname, Deskriptorinhalt, Java-Dateien, Mutation)
 # Die Mutation ist ein (suchen, ersetzen)-Paar auf dem Quelltext des Waechters. Sie entfernt den
 # WIRKSAMEN Teil der Pruefung, nicht ihren Kommentar.
+#
+# Optional folgt ein sechstes Feld: der Inhalt einer ``.befehlswaechter-ausnahmen`` im
+# Wegwerfbaum, und dann ein siebtes: der TEXT, der im GIFT-Lauf stehen muss (statt der Kennung)
+# und im MUTANT-Lauf fehlen muss. Damit deckt die Gegenprobe auch die Ausnahmen ab - bis zum
+# 2026-08-22 stand die Ausnahmedatei ausdruecklich in der Liste dessen, was hier still bleibt.
 FAELLE = [
     (
         "A_PAPER_COMMANDS_BLOCK", "paper-plugin.yml",
@@ -147,7 +160,52 @@ public final class Probe extends JavaPlugin {
         ('            if not any(erzeugung.search(t) for t in alle_texte.values()):',
          '            if False:'),
     ),
+    # ── Ausnahmen ────────────────────────────────────────────────────────────────────────────
+    # ⚠️ Diese zwei Faelle decken die Reparatur vom 2026-08-22 ab. Vorher verwarf ``melde()``
+    # einen ausgenommenen Fund lautlos, und der Lauf druckte danach "keine Funde" - ein gruener
+    # Lauf und einer mit unterdruecktem Fund waren ununterscheidbar.
+    (
+        "UNTERDRUECKT", "paper-plugin.yml", PAPER_KOPF,
+        {"Probe.java": """package net.probe;
+import org.bukkit.plugin.java.JavaPlugin;
+public final class Probe extends JavaPlugin {
+    @Override public void onEnable() { getLogger().info("nichts"); }
+}
+""", "Pingbefehl.java": SAUBERER_BEFEHL},
+        # ⚠️ Die Mutation nimmt die MELDUNG weg, nicht die Unterdrueckung. Genau darum geht es:
+        # unterdrueckt wurde vorher auch schon richtig - es sagte nur niemand.
+        ('    angewandt = e.angewandt\n    if not angewandt:\n        return []',
+         '    angewandt = []\n    if not angewandt:\n        return []'),
+        {
+            "ausnahmen": f"E_BEFEHL_NIE_ERZEUGT:{AUSNAHME_PFAD}:{AUSNAHME_BEGRUENDUNG}\n",
+            "gift_rueckgabe": 0,
+            "gift_text": "UNTERDRUECKT",
+        },
+    ),
+    (
+        "VERALTET", "paper-plugin.yml", PAPER_KOPF,
+        {"Probe.java": """package net.probe;
+import org.bukkit.plugin.java.JavaPlugin;
+public final class Probe extends JavaPlugin {
+    @Override public void onEnable() { registerCommand("ping", "x", new Pingbefehl()); }
+}
+""", "Pingbefehl.java": SAUBERER_BEFEHL},
+        ('    for a in ausnahmen:\n        if a.angewandt:\n            continue',
+         '    for a in []:\n        if a.angewandt:\n            continue'),
+        {
+            "ausnahmen": f"E_BEFEHL_NIE_ERZEUGT:{AUSNAHME_PFAD}:{AUSNAHME_BEGRUENDUNG}\n",
+            "gift_rueckgabe": 4,
+            "gift_text": "VERALTET",
+        },
+    ),
 ]
+
+# ⚠️ NICHT hier abgedeckt, ausdruecklich: die dritte Lage ``UNGEPRUEFT`` (Pfad existiert, lag
+# aber ausserhalb der gelesenen Quellenmenge -> nur Warnung, kein rotes Urteil). Sie braucht
+# einen MEHRMODULIGEN Wegwerfbaum, und ``baum()`` hier baut einmodulig; in einem einmoduligen
+# Baum liegt jeder Unterordner innerhalb von ``Modul.wurzel``, die Blindstelle laesst sich also
+# gar nicht herstellen. Gedeckt ist sie von ``befehlswaechter.py --selbsttest`` (Fall
+# "UNGEPRUEFT: Pfad ausserhalb der Quellenmenge"), der dafuer plugin/ + core/ baut.
 
 
 def sha(pfad: str) -> str:
@@ -161,11 +219,13 @@ def schreibe(pfad: str, inhalt: str):
         f.write(inhalt.encode("utf-8"))
 
 
-def baum(basis: str, dname: str, dinhalt: str, dateien: dict) -> str:
+def baum(basis: str, dname: str, dinhalt: str, dateien: dict, ausnahmen: str | None = None) -> str:
     wurzel = os.path.join(basis, "probe")
     schreibe(os.path.join(wurzel, "src", "main", "resources", dname), dinhalt)
     for name, inhalt in dateien.items():
         schreibe(os.path.join(wurzel, "src", "main", "java", "net", "probe", name), inhalt)
+    if ausnahmen is not None:
+        schreibe(os.path.join(wurzel, ".befehlswaechter-ausnahmen"), "# Kopf\n" + ausnahmen)
     return wurzel
 
 
@@ -192,17 +252,25 @@ def main() -> int:
     print(f"GEGENPROBE gegen {os.path.relpath(WAECHTER)}  (sha256/16 {sha_vorher})\n")
 
     with tempfile.TemporaryDirectory() as tmp:
-        for nr, (kennung, dname, dinhalt, dateien, (suchen, ersetzen)) in enumerate(FAELLE, 1):
+        for nr, fall in enumerate(FAELLE, 1):
+            kennung, dname, dinhalt, dateien, (suchen, ersetzen) = fall[:5]
+            zusatz = fall[5] if len(fall) > 5 else {}
+            # ⚠️ Was im GIFT-Lauf stehen MUSS. Vorgabe ist die Kennung selbst; die
+            # Ausnahmefaelle suchen stattdessen nach ihrem Ausgabewort, weil dort kein Fund
+            # gedruckt wird, sondern gerade seine Unterdrueckung.
+            marke = zusatz.get("gift_text", kennung)
+            erwartete_rueckgabe = zusatz.get("gift_rueckgabe", 1)
             # ⚠️ NEUTRALER Ordnername, nicht die Kennung. Beim ersten Anlauf hiess der
             # Wegwerfbaum wie der gesuchte Fund - und der Waechter druckt seinen Pfad in die
             # Zeile "geprueft ... in <pfad>". Damit stand die Kennung in JEDER Ausgabe, auch in
             # der des Mutanten, und alle fuenf Faelle meldeten "Kennung DA" bei Rueckgabe 0.
             # Standing Rule 22: der Prueftreffer war eine Zeichenkette, kein Fund.
-            wurzel = baum(os.path.join(tmp, f"fall{nr}"), dname, dinhalt, dateien)
+            wurzel = baum(os.path.join(tmp, f"fall{nr}"), dname, dinhalt, dateien,
+                          zusatz.get("ausnahmen"))
 
             # ── 1 GIFT ────────────────────────────────────────────────────
             rc_gift, aus_gift = lauf(WAECHTER, wurzel)
-            gift_ok = rc_gift == 1 and kennung in aus_gift
+            gift_ok = rc_gift == erwartete_rueckgabe and marke in aus_gift
 
             # ── 2 MUTANT ──────────────────────────────────────────────────
             if suchen not in original_text:
@@ -223,17 +291,19 @@ def main() -> int:
                 continue
 
             rc_mut, aus_mut = lauf(mutant, wurzel)
-            mutant_ok = kennung not in aus_mut
+            mutant_ok = marke not in aus_mut
             gelaufen += 1
 
             ok = gift_ok and mutant_ok
             bestanden += 1 if ok else 0
             gefallen += 0 if ok else 1
             print(f"  {'OK  ' if ok else 'FEHL'} {kennung}")
-            print(f"         GIFT    Rueckgabe {rc_gift}, Kennung {'da' if kennung in aus_gift else 'FEHLT'}"
-                  f"   (erwartet: 1 / da)")
-            print(f"         MUTANT  Rueckgabe {rc_mut}, Kennung {'DA' if kennung in aus_mut else 'weg'}"
-                  f"   (erwartet: Kennung weg - sonst prueft die Zeile nichts)")
+            print(f"         GIFT    Rueckgabe {rc_gift}, Marke '{marke}'"
+                  f" {'da' if marke in aus_gift else 'FEHLT'}"
+                  f"   (erwartet: {erwartete_rueckgabe} / da)")
+            print(f"         MUTANT  Rueckgabe {rc_mut}, Marke '{marke}'"
+                  f" {'DA' if marke in aus_mut else 'weg'}"
+                  f"   (erwartet: Marke weg - sonst prueft die Zeile nichts)")
 
     # ── 3 ZEUGE ──────────────────────────────────────────────────────────
     sha_nachher = sha(WAECHTER)

@@ -43,6 +43,17 @@
 //  Nicht bauen, bis Corwis entschieden hat. Bis dahin gilt die Zahl oben als offener Befund,
 //  nicht als Zustand, mit dem man sich abgefunden hat.
 //
+//  AUSNAHMEN STEHEN IM BAULOG (seit 2026-08-22)
+//  ════════════════════════════════════════════
+//  Der Task druckt die ganze Ausgabe des Skripts ueber `logger.lifecycle`. Darin steht seit dem
+//  2026-08-22 je angewandter Ausnahme eine Zeile `UNTERDRUECKT <KENNUNG> <pfad>` samt
+//  Begruendung, und die Schlusszeile nennt die Zahl der unterdrueckten Funde.
+//  ⚠️ Vorher verwarf das Skript einen ausgenommenen Fund lautlos und meldete danach "keine
+//  Funde": ein gruener Bau mit unterdruecktem Fund war von einem gruenen Bau ohne NICHT zu
+//  unterscheiden. Der Bau bleibt gruen — das ist der Sinn einer Ausnahme —, aber er schweigt
+//  nicht mehr darueber.
+//  ⚠️ Neu ist auch Rueckgabe 4 (unten). Sie faellt, wenn eine Ausnahme NICHTS mehr unterdrueckt.
+//
 //  ⚠️ Die if/throw-Kombination ist keine Umstaendlichkeit. Ein blosses
 //  `if (waechter.isFile()) apply from: waechter` verschwindet lautlos, sobald jemand die Datei
 //  umbenennt — ein Waechter, der bei einem Tippfehler still aussetzt, ist kein Waechter
@@ -157,6 +168,21 @@ tasks.register("befehlswaechter") {
                     " Plugin-Deskriptor gefunden. Das ist kein bestandener Lauf — entweder" +
                     " zeigt der Pfad falsch, oder die paper-plugin.yml liegt nicht unter" +
                     " src/*/resources/.")
+            case 4:
+                // ⚠️ Kein offener Fund, aber eine Ausnahme deckt nichts mehr. Die
+                // .befehlswaechter-ausnahmen nennt sich selbst eine "Liste offener
+                // Entscheidungen, kein Freibrief" — bis zum 2026-08-22 fuehrte das NICHTS aus.
+                // Rot ist hier richtig, weil der Waechter den Beweis hat: die Datei ist weg
+                // oder er hat sie gelesen und den Fund nicht bekommen. Die einzige richtige
+                // Handlung ist das Loeschen der Zeile. Wo er den Beweis NICHT hat (Pfad in
+                // einem Nachbarmodul, das er gar nicht liest), warnt er nur und faellt nicht —
+                // sonst zwaenge er zum Loeschen einer Ausnahme, die vielleicht weiter deckt.
+                throw new GradleException(
+                    "Befehlswaechter: VERALTETE AUSNAHME (Rueckgabe 4) — siehe oben. Kein" +
+                    " offener Fund, aber mindestens eine Zeile in .befehlswaechter-ausnahmen" +
+                    " unterdrueckt nichts mehr. Eine solche Zeile behauptet eine offene" +
+                    " Entscheidung, die keine ist, und deckt ab jetzt nur noch kuenftige" +
+                    " Schuld an derselben Stelle. Zeile loeschen.")
             default:
                 throw new GradleException(
                     "Befehlswaechter: unerwartete Rueckgabe ${ergebnis.exitValue}.")

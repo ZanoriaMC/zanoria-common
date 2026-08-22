@@ -87,6 +87,9 @@ RUECKGABEWERTE
   1  Funde vorhanden (der Bau soll rot werden)
   2  nichts geprueft - Werkzeug oder Aufruf kaputt, NICHT gruen
   3  Aufruf falsch
+  4  keine offenen Funde, aber mindestens eine VERALTETE Ausnahme (der Bau soll rot werden)
+     ⚠️ 1 schlaegt 4: liegen echte Funde vor, ist das der Rueckgabewert, und die veralteten
+     Ausnahmen stehen trotzdem in der Ausgabe.
 
 AUSNAHMEN
 =========
@@ -94,10 +97,45 @@ Bekannte Altlasten stehen in ``<repo>/.befehlswaechter-ausnahmen``, eine Zeile j
 ``KENNUNG:relativer/pfad:Begruendung``. Ohne Begruendung gilt die Zeile nicht. Neue Schuld wird
 rot, bekannte Schuld steht benannt - das ist der Unterschied zu einem abgeschalteten Waechter.
 
+⚠️ JEDE ANGEWANDTE AUSNAHME STEHT IN DER AUSGABE - namentlich, mit ihrer Begruendung.
+Bis zum 2026-08-22 verwarf ``melde()`` einen ausgenommenen Fund LAUTLOS, und der Lauf druckte
+danach "keine Funde". Ein gruener Lauf und einer mit unterdruecktem Fund waren damit
+ununterscheidbar - genau die Bauart Stille, gegen die dieser Waechter sonst steht. Seitdem
+druckt der Lauf je angewandter Ausnahme eine Zeile UNTERDRUECKT samt Begruendung, und die
+Schlusszeile heisst nicht mehr "keine Funde", sondern nennt die Zahl der unterdrueckten Funde.
+
+⚠️ VERALTETE AUSNAHMEN FALLEN AUF (dieselbe Aenderung)
+Die Ausnahmedatei behauptet selbst eine Pflicht: "Wer einen Eintrag aufloest, loescht die
+Zeile" und "Liste offener Entscheidungen, kein Freibrief". Bis zum 2026-08-22 fuehrte diese
+Pflicht NICHTS aus - eine Zeile fuer eine geloeschte Datei blieb ewig stehen und log den Leser
+an, hier stuende noch eine offene Entscheidung. Jetzt wird jede Ausnahme, die NICHTS
+unterdrueckt hat, in eine von drei Lagen einsortiert:
+
+  WEG             Der Pfad existiert nicht mehr.                            -> ROT (Rueckgabe 4)
+  GEGENSTANDSLOS  Der Pfad existiert und WURDE in diesem Lauf gelesen,
+                  der Fund kam trotzdem nicht.                              -> ROT (Rueckgabe 4)
+  UNGEPRUEFT      Der Pfad existiert, lag aber ausserhalb der Quellenmenge
+                  (Nachbarmodul ohne eigenen Deskriptor, siehe oben).       -> nur LAUTE WARNUNG
+
+⚠️ DIE ABWAEGUNG, ausdruecklich benannt. Eine veraltete Ausnahme, die den Bau rot macht, kann
+jemanden zwingen, sie BLIND zu loeschen; eine, die nur warnt, wird ueberlesen. Der Schnitt
+laeuft deshalb nicht zwischen "streng" und "milde", sondern zwischen BEWIESEN und UNBEKANNT:
+  * Bei WEG und GEGENSTANDSLOS hat der Waechter den Beweis in der Hand - er hat die Datei
+    gesucht bzw. gelesen und der Fund kam nicht. Die einzige richtige Handlung IST das Loeschen
+    der Zeile, genau wie die Datei es selbst verlangt. Wer hier "blind" loescht, tut das
+    Richtige; ein Schaden durch Blindheit ist gar nicht moeglich.
+  * Bei UNGEPRUEFT hat er den Beweis NICHT - er ist auf diesem Pfad blind (Nachbarmodule ohne
+    Deskriptor liefern keine einzige Quelle). Rot waere hier die Aufforderung, eine Ausnahme zu
+    loeschen, die moeglicherweise weiter echte Schuld deckt, und das Loeschen wuerde am Urteil
+    NICHTS aendern - der Fund erscheint so oder so nicht. Das ist reines Blindloeschen, und
+    genau davor steht die Warnung statt der roten Ampel.
+
 SELBSTTEST
 ==========
 ``python3 befehlswaechter.py --selbsttest`` baut Wegwerfbaeume fuer jede der fuenf Proben und
-fuer die Gegenrichtung (ein sauberes Plugin muss gruen sein) und meldet jede einzeln.
+fuer die Gegenrichtung (ein sauberes Plugin muss gruen sein) und meldet jede einzeln. Danach
+laeuft der Ausnahmeteil: derselbe Baum mit und ohne Ausnahmedatei (die Zeile muss erscheinen
+bzw. fehlen) und je ein Baum fuer WEG, GEGENSTANDSLOS und UNGEPRUEFT.
 """
 
 from __future__ import annotations
@@ -108,6 +146,27 @@ import os
 import re
 import sys
 import tempfile
+import textwrap
+
+def _stroeme_auf_utf8():
+    """Setzt stdout/stderr auf UTF-8.
+
+    ⚠️ SCHADEN ohne das, unter Windows am 2026-08-22 gemessen: die Vorgabe ist ``cp1252``. Auf
+    stdout steht sie auf ``strict`` - ein ``⚠️`` in einer gedruckten Zeile wirft dann
+    UnicodeEncodeError, das Skript stirbt mitten in der Ausgabe und verlaesst sich mit
+    Rueckgabe 1. Das sieht in Gradle aus wie "Funde vorhanden", ist aber ein abgestuerztes
+    Werkzeug - der teuerste Verwechslungsfall, den dieser Waechter kennt. Auf stderr steht
+    ``backslashreplace``; dort stand bisher woertlich ``\\u26a0\\ufe0f`` im Bericht statt des
+    Zeichens. Der Gradle-Anschluss liest den Strom ohnehin als UTF-8
+    (``ausgabe.toString("UTF-8")``), also ist UTF-8 hier die einzige Fassung, die auf beiden
+    Seiten dasselbe bedeutet.
+    """
+    for strom in (sys.stdout, sys.stderr):
+        try:
+            strom.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 
 AUSGESCHLOSSEN = {".git", "build", ".gradle", ".idea", "out", "run", "deploy",
                   ".claude", "node_modules", "logs", ".kotlin"}
@@ -316,24 +375,135 @@ def module_finden(wurzeln: list[str]) -> list[Modul]:
     return module
 
 
-def ausnahmen_lesen(wurzeln: list[str]) -> set[tuple[str, str]]:
-    """Liest ``.befehlswaechter-ausnahmen`` aus jeder Wurzel. Ohne Begruendung gilt die Zeile nicht."""
-    raus = set()
+class Ausnahme:
+    """Eine gueltige Zeile aus ``.befehlswaechter-ausnahmen``.
+
+    ⚠️ ``angewandt`` ist der ganze Punkt dieser Klasse. Vorher war eine Ausnahme ein blosses
+    Paar in einem ``set`` - ob sie je gegriffen hat, wusste hinterher niemand, und der Lauf
+    druckte "keine Funde". Wer zaehlt, kann sowohl die Unterdrueckung NENNEN als auch die
+    Ausnahme erkennen, die gar nichts mehr unterdrueckt.
+    """
+
+    __slots__ = ("kennung", "pfad", "begruendung", "wurzel", "datei", "zeilennummer", "angewandt")
+
+    def __init__(self, kennung: str, pfad: str, begruendung: str,
+                 wurzel: str, datei: str, zeilennummer: int):
+        self.kennung = kennung
+        self.pfad = pfad
+        self.begruendung = begruendung
+        self.wurzel = wurzel
+        self.datei = datei
+        self.zeilennummer = zeilennummer
+        self.angewandt = 0
+
+    @property
+    def schluessel(self) -> tuple[str, str]:
+        return (self.kennung, self.pfad)
+
+    @property
+    def absolut(self) -> str:
+        return os.path.join(self.wurzel, self.pfad.replace("/", os.sep))
+
+    @property
+    def herkunft(self) -> str:
+        return f"{os.path.basename(self.datei)}:{self.zeilennummer}"
+
+    def __repr__(self):
+        return f"Ausnahme({self.kennung}, {self.pfad}, angewandt={self.angewandt})"
+
+
+def ausnahmen_lesen(wurzeln: list[str]) -> tuple[list[Ausnahme], list[str]]:
+    """Liest ``.befehlswaechter-ausnahmen`` aus jeder Wurzel.
+
+    Gibt (gueltige Ausnahmen, Beanstandungen) zurueck. Ohne Begruendung gilt die Zeile nicht.
+
+    ⚠️ Verworfene Zeilen werden nicht mehr still uebergangen. Eine Zeile ohne Begruendung und
+    eine Dublette sehen im Repo aus wie eine wirksame Ausnahme; wer nicht erfaehrt, dass sie
+    nicht gilt, sucht den roten Fund an der falschen Stelle - oder haelt eine Schuld fuer
+    gedeckt, die es nicht ist.
+    """
+    raus: list[Ausnahme] = []
+    beanstandungen: list[str] = []
+    gesehen: dict[tuple[str, str], Ausnahme] = {}
     for w in wurzeln:
         p = os.path.join(w, AUSNAHMEDATEI)
         if not os.path.isfile(p):
             continue
-        for zeile in lies(p).split("\n"):
-            zeile = zeile.strip()
+        for nr, rohzeile in enumerate(lies(p).split("\n"), 1):
+            zeile = rohzeile.strip()
             if not zeile or zeile.startswith("#"):
                 continue
             teile = zeile.split(":", 2)
             if len(teile) < 3 or not teile[2].strip():
-                # ⚠️ Absichtlich still uebergangen statt geduldet: eine Ausnahme ohne Begruendung
-                # ist keine Ausnahme. Der Fund bleibt damit rot.
+                beanstandungen.append(
+                    f"{os.path.basename(p)}:{nr}: Zeile OHNE Begruendung - sie gilt NICHT,"
+                    f" der Fund bleibt rot. Form: KENNUNG:relativer/pfad:Begruendung."
+                    f"\n      Zeile: {zeile[:160]}")
                 continue
-            raus.add((teile[0].strip(), teile[1].strip().replace("\\", "/")))
-    return raus
+            a = Ausnahme(teile[0].strip(), teile[1].strip().replace("\\", "/"),
+                         teile[2].strip(), w, p, nr)
+            vorher = gesehen.get(a.schluessel)
+            if vorher is not None:
+                beanstandungen.append(
+                    f"{os.path.basename(p)}:{nr}: DUBLETTE zu {vorher.herkunft} fuer"
+                    f" {a.kennung} {a.pfad} - nur die erste Zeile gilt. Die zweite waere sonst"
+                    f" gleich als veraltet gemeldet worden, obwohl sie es nicht ist.")
+                continue
+            gesehen[a.schluessel] = a
+            raus.append(a)
+    return raus, beanstandungen
+
+
+# ⚠️ Die drei Lagen einer Ausnahme, die NICHTS unterdrueckt hat. Warum zwei davon rot machen und
+# die dritte nur warnt, steht ausfuehrlich im Kopf der Datei unter AUSNAHMEN.
+VERALTET_WEG = "WEG"
+VERALTET_GEGENSTANDSLOS = "GEGENSTANDSLOS"
+VERALTET_UNGEPRUEFT = "UNGEPRUEFT"
+
+VERALTET_ROT = (VERALTET_WEG, VERALTET_GEGENSTANDSLOS)
+
+VERALTET_SATZ = {
+    VERALTET_WEG:
+        "der Pfad existiert nicht mehr. Die Ausnahme deckt nichts und behauptet trotzdem eine"
+        " offene Entscheidung. Die Datei verlangt es selbst: wer einen Eintrag aufloest,"
+        " loescht die Zeile.",
+    VERALTET_GEGENSTANDSLOS:
+        "der Pfad wurde in diesem Lauf GELESEN und der Fund kam nicht. Die Altlast ist weg, die"
+        " Zeile nicht. Sie deckt ab jetzt nur noch kuenftige Schuld an derselben Stelle - genau"
+        " das soll eine Ausnahme nicht.",
+    VERALTET_UNGEPRUEFT:
+        "der Pfad existiert, lag aber AUSSERHALB der gelesenen Quellenmenge (Nachbarmodul ohne"
+        " eigenen Deskriptor). Ob die Altlast weg ist, weiss dieser Lauf NICHT - er war dort"
+        " blind. Deshalb nur diese Warnung und kein rotes Urteil: ein Loeschen aufgrund einer"
+        " Blindstelle waere blindes Loeschen.",
+}
+
+
+class Ergebnis:
+    """Was ein Lauf gesehen hat - Funde UND was ihm die Ausnahmen weggenommen haben."""
+
+    __slots__ = ("funde", "deskriptoren", "java_dateien", "ausnahmen", "veraltet",
+                 "beanstandungen")
+
+    def __init__(self, funde, deskriptoren, java_dateien, ausnahmen, veraltet, beanstandungen):
+        self.funde: list[str] = funde
+        self.deskriptoren: int = deskriptoren
+        self.java_dateien: int = java_dateien
+        self.ausnahmen: list[Ausnahme] = ausnahmen
+        self.veraltet: list[tuple[Ausnahme, str]] = veraltet
+        self.beanstandungen: list[str] = beanstandungen
+
+    @property
+    def angewandt(self) -> list[Ausnahme]:
+        return [a for a in self.ausnahmen if a.angewandt]
+
+    @property
+    def unterdrueckt(self) -> int:
+        return sum(a.angewandt for a in self.ausnahmen)
+
+    @property
+    def veraltet_rot(self) -> list[tuple[Ausnahme, str]]:
+        return [(a, art) for a, art in self.veraltet if art in VERALTET_ROT]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -386,12 +556,16 @@ def hat_commands_block(zeilen: list[str]) -> int | None:
     return None
 
 
-def pruefe(wurzeln: list[str]) -> tuple[list[str], int, int]:
-    """Gibt (Funde, Zahl der Deskriptoren, Zahl der Java-Dateien) zurueck."""
+def pruefe(wurzeln: list[str]) -> Ergebnis:
+    """Prueft und gibt ein ``Ergebnis`` zurueck - Funde UND das, was Ausnahmen weggenommen haben."""
     module = module_finden(wurzeln)
-    ausnahmen = ausnahmen_lesen(wurzeln)
+    ausnahmen, beanstandungen = ausnahmen_lesen(wurzeln)
+    nach_schluessel = {a.schluessel: a for a in ausnahmen}
     funde: list[str] = []
     java_gesehen = 0
+    # ⚠️ Alles, was dieser Lauf wirklich in der Hand hatte. Nur damit laesst sich spaeter
+    # "der Fund ist weg" von "ich war dort blind" unterscheiden - siehe VERALTET_UNGEPRUEFT.
+    gelesen: set[str] = set()
 
     def rel(p: str) -> str:
         for w in wurzeln:
@@ -404,11 +578,19 @@ def pruefe(wurzeln: list[str]) -> tuple[list[str], int, int]:
         return p.replace("\\", "/")
 
     def melde(kennung: str, pfad: str, satz: str):
-        if (kennung, rel(pfad)) in ausnahmen:
+        # ⚠️ Hier wird nichts mehr lautlos weggeworfen. Die getroffene Ausnahme wird GEZAEHLT,
+        # und main() druckt sie namentlich mit Begruendung. Ein Lauf mit Ausnahme darf nicht
+        # aussehen wie einer ohne - vor dem 2026-08-22 tat er genau das.
+        treffer = nach_schluessel.get((kennung, rel(pfad)))
+        if treffer is not None:
+            treffer.angewandt += 1
             return
         funde.append(f"{kennung}  {rel(pfad)}\n      {satz}")
 
     for m in module:
+        gelesen.add(rel(m.deskriptor))
+        for q in m.quellen:
+            gelesen.add(rel(q))
         zeilen = yaml_ohne_kommentare(lies(m.deskriptor))
 
         # ── A ──────────────────────────────────────────────────────────────
@@ -486,7 +668,85 @@ def pruefe(wurzeln: list[str]) -> tuple[list[str], int, int]:
                       f" etwas im Log steht. ⚠️ Diese Probe belegt eine ERZEUGUNG, nicht eine"
                       f" ANMELDUNG.")
 
-    return funde, len(module), java_gesehen
+    # ── Die Pflicht, die die Ausnahmedatei ueber sich selbst behauptet, ausfuehren ──────────
+    # "Wer einen Eintrag aufloest, loescht die Zeile." Bis zum 2026-08-22 fuehrte das NICHTS
+    # aus. Eine Ausnahme, die nichts unterdrueckt hat, ist entweder erledigt (dann muss die
+    # Zeile weg) oder sie liegt in einer Blindstelle (dann weiss dieser Lauf es nicht).
+    veraltet: list[tuple[Ausnahme, str]] = []
+    for a in ausnahmen:
+        if a.angewandt:
+            continue
+        if not os.path.exists(a.absolut):
+            veraltet.append((a, VERALTET_WEG))
+        elif a.pfad in gelesen:
+            veraltet.append((a, VERALTET_GEGENSTANDSLOS))
+        else:
+            veraltet.append((a, VERALTET_UNGEPRUEFT))
+
+    return Ergebnis(funde, len(module), java_gesehen, ausnahmen, veraltet, beanstandungen)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ausgabe - eigene Funktionen, damit der Selbsttest den TEXT pruefen kann
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ Diese drei Funktionen geben Zeilen zurueck, statt zu drucken. Nur so kann der Selbsttest
+# belegen, dass die Zeile WIRKLICH ERSCHEINT - eine Zusicherung auf ein internes Feld belegt das
+# nicht, und genau das war der Fehler: ``melde()`` verwarf sauber, nur sah es niemand.
+
+def _umbruch(text: str, einzug: str, breite: int = 100) -> list[str]:
+    # ⚠️ Der Folgeeinzug ist LEERRAUM in Breite des ersten, nicht der erste noch einmal. Sonst
+    # steht "Begruendung:" vor jeder Zeile und eine lange Begruendung liest sich wie ein Dutzend
+    # Ausnahmen statt wie eine.
+    return textwrap.wrap(text, width=breite, initial_indent=einzug,
+                         subsequent_indent=" " * len(einzug)) or [einzug.rstrip()]
+
+
+def zeilen_ausnahmen(e: Ergebnis) -> list[str]:
+    """Je angewandter Ausnahme eine sichtbare Zeile - mit Pfad, Zahl und Begruendung."""
+    angewandt = e.angewandt
+    if not angewandt:
+        return []
+    zeilen = [
+        f"BEFEHLSWAECHTER: {len(angewandt)} Ausnahme(n) angewandt,"
+        f" {e.unterdrueckt} Fund(e) dadurch unterdrueckt."
+        f" ⚠️ Das ist KEIN Lauf ohne Funde.",
+    ]
+    for a in sorted(angewandt, key=lambda x: (x.kennung, x.pfad)):
+        zeilen.append(f"  UNTERDRUECKT  {a.kennung}  {a.pfad}"
+                      f"   ({a.angewandt} Fund(e), {a.herkunft})")
+        zeilen.extend(_umbruch(a.begruendung, "      Begruendung: "))
+    return zeilen
+
+
+def zeilen_veraltet(e: Ergebnis) -> list[str]:
+    """Je Ausnahme, die nichts mehr unterdrueckt, eine Zeile - rot oder als laute Warnung."""
+    if not e.veraltet:
+        return []
+    rot = e.veraltet_rot
+    zeilen = [
+        f"BEFEHLSWAECHTER: {len(e.veraltet)} Ausnahme(n) haben in diesem Lauf NICHTS"
+        f" unterdrueckt - davon {len(rot)} nachweislich veraltet.",
+    ]
+    for a, art in sorted(e.veraltet, key=lambda x: (x[1], x[0].kennung, x[0].pfad)):
+        marke = "VERALTET  " if art in VERALTET_ROT else "UNBELEGT  "
+        zeilen.append(f"  {marke}{art}  {a.kennung}  {a.pfad}   ({a.herkunft})")
+        zeilen.extend(_umbruch(VERALTET_SATZ[art], "      "))
+    if rot:
+        zeilen.append("  ⚠️ Loeschen ist hier die richtige Handlung, nicht das Umgehen: der"
+                      " Waechter hat die Stelle gesucht bzw. gelesen und den Fund NICHT mehr"
+                      " bekommen.")
+    return zeilen
+
+
+def zeilen_beanstandungen(e: Ergebnis) -> list[str]:
+    if not e.beanstandungen:
+        return []
+    zeilen = [f"BEFEHLSWAECHTER: {len(e.beanstandungen)} Zeile(n) in {AUSNAHMEDATEI} gelten"
+              f" NICHT:"]
+    for b in e.beanstandungen:
+        zeilen.append(f"  UNGUELTIG  {b}")
+    return zeilen
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -550,6 +810,122 @@ def _baum(basis: str, deskriptorname: str, deskriptor: str, dateien: dict[str, s
     for name, inhalt in dateien.items():
         _schreibe(os.path.join(wurzel, "src", "main", "java", "net", "probe", name), inhalt)
     return wurzel
+
+
+# ⚠️ Der Ausnahmeteil baut MEHRMODULIG (plugin/ + core/), nicht wie die Faelle oben einmodulig.
+# Das ist Absicht und der einzige Weg zu Fall 5: ``Modul.wurzel`` ist das Verzeichnis mit dem
+# Deskriptor, hier ``plugin/``. Alles unter ``core/`` liegt AUSSERHALB der Quellenmenge und ist
+# damit die Blindstelle, die VERALTET_UNGEPRUEFT beschreibt. In einem einmoduligen Baum liegt
+# jeder Unterordner INNERHALB von Modul.wurzel - dort laesst sich der Fall nicht herstellen.
+E_MODUL = "plugin"
+E_PFAD = f"{E_MODUL}/src/main/java/net/probe/Pingbefehl.java"
+E_BLINDPFAD = "core/src/main/java/net/probe/Fremdbefehl.java"
+
+FREMDER_BEFEHL = """package net.probe;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+public final class Fremdbefehl implements BasicCommand {
+    @Override public void execute(CommandSourceStack q, String[] a) { }
+}
+"""
+
+E_BAUM = {"Probe.java": """package net.probe;
+import org.bukkit.plugin.java.JavaPlugin;
+public final class Probe extends JavaPlugin {
+    @Override public void onEnable() { getLogger().info("nichts angemeldet"); }
+}
+""", "Pingbefehl.java": BEFEHL_SAUBER}
+
+
+def selbsttest_ausnahmen() -> tuple[int, int]:
+    """Positivkontrolle fuer die Ausnahmen. Gibt (bestanden, gefallen) zurueck.
+
+    ⚠️ Jeder Fall prueft den AUSGEDRUCKTEN TEXT, nicht ein internes Feld. Der reparierte Fehler
+    war nicht, dass die Ausnahme falsch gegriffen haette - sie griff richtig und SCHWIEG. Eine
+    Zusicherung auf ``a.angewandt == 1`` haette den Fehler nicht gefangen.
+    """
+    faelle: list[tuple[str, dict, str | None, object]] = []
+
+    BEGR = "Altlast vom 2026-08-21, Corwis entscheidet ueber Loeschen oder Anmelden."
+    ZEILE = f"E_BEFEHL_NIE_ERZEUGT:{E_PFAD}:{BEGR}"
+
+    def hat_zeile(e: Ergebnis, text: str) -> bool:
+        return "UNTERDRUECKT" in text and E_PFAD in text and BEGR.split(",")[0] in text
+
+    # 1  MIT Ausnahme: kein offener Fund, aber die Zeile MUSS erscheinen.
+    faelle.append((
+        "MIT Ausnahme: Fund unterdrueckt UND namentlich in der Ausgabe", E_BAUM, ZEILE,
+        lambda e, t: not e.funde and e.unterdrueckt == 1 and hat_zeile(e, t) and not e.veraltet))
+
+    # 2  Gegenrichtung - ohne Ausnahmedatei darf die Zeile NICHT erscheinen. Ohne diesen Fall
+    #    koennte die Zeile immer stehen und Fall 1 waere trotzdem "bestanden".
+    faelle.append((
+        "OHNE Ausnahme: Fund ist rot und KEINE UNTERDRUECKT-Zeile", E_BAUM, None,
+        lambda e, t: len(e.funde) == 1 and e.unterdrueckt == 0 and "UNTERDRUECKT" not in t))
+
+    # 3  VERALTET WEG - der Pfad existiert nicht mehr.
+    faelle.append((
+        "VERALTET WEG: Ausnahme zeigt auf eine geloeschte Datei", E_BAUM,
+        f"E_BEFEHL_NIE_ERZEUGT:{E_MODUL}/src/main/java/net/probe/Weg.java:{BEGR}",
+        lambda e, t: [art for _, art in e.veraltet] == [VERALTET_WEG]
+        and e.veraltet_rot and "VERALTET" in t))
+
+    # 4  VERALTET GEGENSTANDSLOS - die Datei wurde gelesen, der Fund kam nicht.
+    faelle.append((
+        "VERALTET GEGENSTANDSLOS: Datei gelesen, Fund weg",
+        {"Probe.java": HAUPT_SAUBER, "Pingbefehl.java": BEFEHL_SAUBER}, ZEILE,
+        lambda e, t: [art for _, art in e.veraltet] == [VERALTET_GEGENSTANDSLOS]
+        and e.veraltet_rot and "VERALTET" in t))
+
+    # 5  UNGEPRUEFT - der Pfad existiert, lag aber ausserhalb der Quellenmenge. Nur Warnung.
+    #    ⚠️ Das ist die Abwaegung als Maschine: hier war der Waechter blind, also kein rotes
+    #    Urteil. Faellt dieser Fall, macht der Waechter jemanden zum Blindloescher.
+    faelle.append((
+        "UNGEPRUEFT: Pfad ausserhalb der Quellenmenge - warnt, faellt aber nicht", E_BAUM,
+        f"E_BEFEHL_NIE_ERZEUGT:{E_BLINDPFAD}:{BEGR}",
+        lambda e, t: [art for _, art in e.veraltet] == [VERALTET_UNGEPRUEFT]
+        and not e.veraltet_rot and "UNBELEGT" in t and VERALTET_UNGEPRUEFT in t))
+
+    # 6  Zeile ohne Begruendung: gilt nicht - der Fund bleibt rot UND die Zeile wird genannt.
+    faelle.append((
+        "OHNE BEGRUENDUNG: gilt nicht, Fund bleibt rot, Zeile wird genannt", E_BAUM,
+        f"E_BEFEHL_NIE_ERZEUGT:{E_PFAD}:",
+        lambda e, t: len(e.funde) == 1 and e.unterdrueckt == 0
+        and len(e.beanstandungen) == 1 and "UNGUELTIG" in t))
+
+    bestanden = 0
+    gefallen = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        for nr, (bezeichnung, dateien, ausnahmezeile, pruefung) in enumerate(faelle, 1):
+            wurzel = os.path.join(tmp, f"ausnahme{nr}")
+            _schreibe(os.path.join(wurzel, E_MODUL, "src", "main", "resources",
+                                   "paper-plugin.yml"), PAPER_SAUBER)
+            for name, inhalt in dateien.items():
+                _schreibe(os.path.join(wurzel, E_MODUL, "src", "main", "java", "net", "probe",
+                                       name), inhalt)
+            # Ein Nachbarmodul OHNE Deskriptor - Fall 5 braucht einen Pfad, den es GIBT und
+            # den der Waechter trotzdem nicht liest.
+            _schreibe(os.path.join(wurzel, *E_BLINDPFAD.split("/")), FREMDER_BEFEHL)
+            if ausnahmezeile is not None:
+                _schreibe(os.path.join(wurzel, AUSNAHMEDATEI),
+                          "# Kopf\n" + ausnahmezeile + "\n")
+            e = pruefe([wurzel])
+            text = "\n".join(zeilen_ausnahmen(e) + zeilen_veraltet(e) + zeilen_beanstandungen(e))
+            ok = bool(pruefung(e, text))
+            if e.deskriptoren == 0:
+                ok = False
+                bezeichnung += "  [KEIN DESKRIPTOR GEFUNDEN]"
+            print(f"  {'OK  ' if ok else 'FEHL'} {bezeichnung}")
+            if not ok:
+                gefallen += 1
+                print(f"         Funde {len(e.funde)}, unterdrueckt {e.unterdrueckt},"
+                      f" veraltet {[art for _, art in e.veraltet]},"
+                      f" Beanstandungen {len(e.beanstandungen)}")
+                for z in text.splitlines():
+                    print(f"         | {z}")
+            else:
+                bestanden += 1
+    return bestanden, gefallen
 
 
 def selbsttest() -> int:
@@ -639,7 +1015,8 @@ public final class Probe extends JavaPlugin {
         for nr, (bezeichnung, dname, dinhalt, dateien, erwartet) in enumerate(faelle, 1):
             basis = os.path.join(tmp, f"fall{nr}")
             wurzel = _baum(basis, dname, dinhalt, dateien)
-            funde, deskriptoren, javas = pruefe([wurzel])
+            e = pruefe([wurzel])
+            funde, deskriptoren, javas = e.funde, e.deskriptoren, e.java_dateien
             kennungen = {f.split()[0] for f in funde}
             if erwartet is None:
                 ok = len(funde) == 0
@@ -658,6 +1035,12 @@ public final class Probe extends JavaPlugin {
                     print(f"         {f.splitlines()[0]}")
             else:
                 bestanden += 1
+
+    print("")
+    a_bestanden, a_gefallen = selbsttest_ausnahmen()
+    bestanden += a_bestanden
+    gefallen += a_gefallen
+
     print(f"\nSelbsttest: {bestanden} von {bestanden + gefallen} bestanden.")
     return 0 if gefallen == 0 else 1
 
@@ -665,6 +1048,7 @@ public final class Probe extends JavaPlugin {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main(argv: list[str]) -> int:
+    _stroeme_auf_utf8()
     p = argparse.ArgumentParser(
         description="Befehlswaechter - faengt deklarierte oder implementierte Befehle, die"
                     " niemand anmeldet.")
@@ -683,28 +1067,57 @@ def main(argv: list[str]) -> int:
             print(f"BEFEHLSWAECHTER: '{w}' ist kein Verzeichnis.", file=sys.stderr)
             return 3
 
-    funde, deskriptoren, javas = pruefe(wurzeln)
+    e = pruefe(wurzeln)
 
     # ⚠️ Standing Rule 22/29: ein Werkzeug, das nichts findet, muss das von "nichts geprueft"
     # unterscheiden koennen. Null Deskriptoren ist NICHT gruen.
-    print(f"BEFEHLSWAECHTER: geprueft {deskriptoren} Plugin-Deskriptor(en),"
-          f" {javas} Java-Datei(en) in {', '.join(wurzeln)}")
-    if deskriptoren == 0:
+    print(f"BEFEHLSWAECHTER: geprueft {e.deskriptoren} Plugin-Deskriptor(en),"
+          f" {e.java_dateien} Java-Datei(en) in {', '.join(wurzeln)}")
+    if e.deskriptoren == 0:
         print("BEFEHLSWAECHTER: NICHTS GEPRUEFT - keine paper-plugin.yml und keine plugin.yml"
               " gefunden. Das ist kein bestandener Lauf. Falscher Pfad, oder der Deskriptor"
               " liegt nicht unter src/*/resources/.", file=sys.stderr)
         return 2
 
-    if not funde:
-        print("BEFEHLSWAECHTER: keine Funde.")
+    # ⚠️ Diese drei Bloecke stehen VOR dem Urteil und laufen bei JEDEM Ausgang - auch bei
+    # Rueckgabe 0. Genau darin liegt die Reparatur: ein gruener Lauf mit unterdruecktem Fund
+    # sah bis zum 2026-08-22 aus wie ein gruener Lauf ohne.
+    for block in (zeilen_ausnahmen(e), zeilen_veraltet(e), zeilen_beanstandungen(e)):
+        if block:
+            print("")
+            for z in block:
+                print(z)
+
+    # ⚠️ stdout ist gepuffert, stderr nicht. Ohne dieses flush() steht das Schlussurteil im
+    # Gradle-Log VOR den Zeilen, die es begruendet - und wer nur die ersten Zeilen liest, sieht
+    # ein Urteil ohne seinen Beleg.
+    sys.stdout.flush()
+
+    if e.funde:
+        print(f"\nBEFEHLSWAECHTER: {len(e.funde)} Fund(e) - der Bau ist rot.\n", file=sys.stderr)
+        for f in e.funde:
+            print(f"  {f}\n", file=sys.stderr)
+        print("Bekannte Altlast? Zeile in .befehlswaechter-ausnahmen aufnehmen, Form"
+              " KENNUNG:pfad:Begruendung. Ohne Begruendung gilt sie nicht.", file=sys.stderr)
+        # ⚠️ 1 schlaegt 4. Ein offener Fund ist der schwerere Befund; die veralteten Ausnahmen
+        # stehen oben und gehen nicht verloren.
+        return 1
+
+    if e.veraltet_rot:
+        print(f"\nBEFEHLSWAECHTER: keine offenen Funde, aber {len(e.veraltet_rot)} VERALTETE"
+              f" Ausnahme(n) - der Bau ist rot. Die Ausnahmedatei nennt sich selbst eine 'Liste"
+              f" offener Entscheidungen, kein Freibrief'; eine Zeile, die nichts mehr deckt,"
+              f" behauptet eine offene Entscheidung, die keine ist. Zeile loeschen.",
+              file=sys.stderr)
+        return 4
+
+    if e.unterdrueckt:
+        print(f"\nBEFEHLSWAECHTER: keine OFFENEN Funde - aber {e.unterdrueckt} Fund(e) durch"
+              f" {len(e.angewandt)} benannte Ausnahme(n) unterdrueckt (siehe oben).")
         return 0
 
-    print(f"\nBEFEHLSWAECHTER: {len(funde)} Fund(e) - der Bau ist rot.\n", file=sys.stderr)
-    for f in funde:
-        print(f"  {f}\n", file=sys.stderr)
-    print("Bekannte Altlast? Zeile in .befehlswaechter-ausnahmen aufnehmen, Form"
-          " KENNUNG:pfad:Begruendung. Ohne Begruendung gilt sie nicht.", file=sys.stderr)
-    return 1
+    print("BEFEHLSWAECHTER: keine Funde, keine Ausnahme angewandt.")
+    return 0
 
 
 if __name__ == "__main__":
