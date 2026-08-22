@@ -23,10 +23,25 @@
 //  im Log nichts. Der einzige Zeuge ist die Zahl in "geprueft N Deskriptor(en), M
 //  Java-Datei(en)"; wer sie nicht gegen den Bestand haelt, liest ein gruenes Urteil ueber
 //  einen Ausschnitt. Am 2026-08-22 gemessen: NexusStrike 101 Dateien im Repo / 54 gemeldet,
-//  ZanUI 49 / 9. Die uebrigen fuenf angebundenen Repos (Nexus 568/568, RelicWars 183/183,
-//  Showdown 65/65, ZanoriaCommands 6/6, ZanoriaLobby 5/5) sind einmodulig - dort deckt sich
-//  beides, aber nur solange das so bleibt.
+//  ZanUI 49 / 9. Die uebrigen sechs angebundenen Repos (Nexus 568/568, RelicWars 183/183,
+//  Showdown 65/65, ZanoriaCommands 6/6, ZanoriaLobby 5/5, CoreClash 145/145 seit dem
+//  2026-08-22) sind einmodulig - dort deckt sich beides, aber nur solange das so bleibt.
 //  Wer das aendern will, aendert dieses Skript - und das trifft alle Verbraucher zugleich.
+//
+//  ⚠️ OFFENE ENTSCHEIDUNG, NICHT GEDULDET - Stand 2026-08-22, sie gehoert Corwis.
+//  ZanUI ist der schlimmste Fall: 40 von 49 Dateien ungewacht, VIER FUENFTEL - und zwar in dem
+//  Repo, dessen eigener Vorfall vom 2026-08-20 diesen Waechter ueberhaupt erzwungen hat. Die
+//  Erweiterung, die das schliessen wuerde (Nachbarmodule ohne eigenen Deskriptor mit in die
+//  Quellenmenge von ``module_finden()`` nehmen), liegt als VORLAGE vor und ist BEWUSST NICHT
+//  gebaut.
+//  ⚠️ Der Grund steht genau hier: diese Datei und das Skript daneben haben ACHT Verbraucher.
+//  Eine Reichweitenaenderung wird nicht in einem Repo wirksam, sondern in allen zugleich - in
+//  NexusStrike zieht sie 47 bisher ungesehene Dateien in den Bau, und wenn dort etwas faellt,
+//  faellt es in einem fremden Baum und sieht dort wie ein neuer Fehler aus.
+//  ⚠️ Wer das hier liest und die Erweiterung "eben schnell" nachzieht, macht genau den Fehler,
+//  gegen den der Waechter steht: eine Aenderung mit Reichweite, die niemand bestellt hat.
+//  Nicht bauen, bis Corwis entschieden hat. Bis dahin gilt die Zahl oben als offener Befund,
+//  nicht als Zustand, mit dem man sich abgefunden hat.
 //
 //  ⚠️ Die if/throw-Kombination ist keine Umstaendlichkeit. Ein blosses
 //  `if (waechter.isFile()) apply from: waechter` verschwindet lautlos, sobald jemand die Datei
