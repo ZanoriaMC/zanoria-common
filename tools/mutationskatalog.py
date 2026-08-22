@@ -172,8 +172,12 @@ def main(argv: list[str]) -> int:
             print(f"MUTATIONSKATALOG: {pfad} fehlt - es lief nichts.", file=sys.stderr)
             return 2
 
+    # ⚠️ ``\r\n`` zu ``\n``. ``core.autocrlf`` steht hier auf ``true``, ein frischer Klon legt
+    # den Waechter mit CRLF ab - und die mehrzeiligen Anker unten stehen als ``\n``-Folgen im
+    # Quelltext dieser Datei. Ohne die Normalisierung fande kein einziger seine Stelle, und der
+    # Katalog meldete 22 mal ANKER WEG ueber einen Waechter, an dem nichts fehlt.
     with io.open(WAECHTER, "rb") as f:
-        original = f.read().decode("utf-8")
+        original = f.read().decode("utf-8").replace("\r\n", "\n")
 
     faelle = [k for k in KATALOG if not gewaehlt or k[0] in gewaehlt]
     if not faelle:

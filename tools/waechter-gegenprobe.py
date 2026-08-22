@@ -32,8 +32,9 @@ sondern "es lief nichts".
 
 ⚠️ Und die Mutation muss etwas entfernen, das der Lauf wirklich benutzt (Standing Rule 30). Ein
 Kommentar taugt nicht. Entfernt wird deshalb der Rumpf der Pruefung selbst, und der Mutant wird
-vor dem Lauf gegen das Original byteweise verglichen: sind sie gleich, wurde nicht mutiert, und
-der Fall gilt als NICHT GELAUFEN statt als bestanden.
+vor dem Lauf Zeichen fuer Zeichen gegen das Original verglichen: sind sie gleich, wurde nicht
+mutiert, und der Fall gilt als NICHT GELAUFEN statt als bestanden. (Verglichen wird auf
+normalisierten Zeilenenden - warum, steht bei ``waechter_lesen()``.)
 
 WAS AM 2026-08-22 DAZUKAM UND WARUM
 ===================================
@@ -845,19 +846,40 @@ def gemeldet(text: str) -> tuple[set[str], int]:
     return kennungen, int(m.group(1)) if m else 0
 
 
-def _mutant_schreiben(tmp: str, original_text: str, sha_vorher: str, nr: int,
+def waechter_lesen() -> tuple[str, str]:
+    """Gibt (normalisierter Quelltext, sha256/16 der Datei auf der Platte) zurueck.
+
+    ⚠️ ``\\r\\n`` wird zu ``\\n``, und das ist keine Kosmetik. ``core.autocrlf`` steht auf dieser
+    Maschine auf ``true``: ein frischer Klon legt ``befehlswaechter.py`` mit CRLF auf die
+    Platte. Die Mutationsanker unten stehen als ``'...\\n...'`` im Quelltext DIESER Datei und
+    bleiben LF, weil Pythons Tokenizer Zeilenenden in Quelltexten vereinheitlicht. Ohne die
+    Normalisierung fande also KEIN einziger mehrzeiliger Anker mehr seine Stelle, jeder Fall
+    meldete NICHT GELAUFEN, und der ``check`` von zanoria-common waere auf jedem frischen Klon
+    rot - ueber einen Waechter, an dem nichts fehlt. Ein falsches Rot kostet hier genauso viel
+    wie ein falsches Gruen: es bringt den naechsten dazu, die Pruefung abzuschalten.
+    """
+    with io.open(WAECHTER, "rb") as f:
+        roh = f.read()
+    return roh.decode("utf-8").replace("\r\n", "\n"), hashlib.sha256(roh).hexdigest()[:16]
+
+
+def _mutant_schreiben(tmp: str, original_text: str, nr: int,
                       suchen: str, ersetzen: str) -> tuple[str | None, str]:
     """Gibt (Pfad, "") oder (None, Grund) zurueck."""
     if suchen not in original_text:
         return None, ("der Mutationsanker steht nicht mehr im Waechter. Kein Urteil, nicht"
                       " 'bestanden'.")
-    pfad = os.path.join(tmp, f"mutant{nr}.py")
-    with io.open(pfad, "wb") as f:
-        f.write(original_text.replace(suchen, ersetzen, 1).encode("utf-8"))
+    mutant_text = original_text.replace(suchen, ersetzen, 1)
     # ⚠️ Belegen, dass wirklich mutiert wurde. Ein Mutant, der dem Original gleicht, gibt eine
     # Gegenprobe zurueck, die nichts geprueft hat (Standing Rule 28).
-    if sha(pfad) == sha_vorher:
-        return None, "Mutant ist byteweise das Original."
+    # ⚠️ Verglichen wird gegen den NORMALISIERTEN Quelltext, nicht gegen die Datei auf der
+    # Platte: bei CRLF waeren die beiden immer verschieden, und diese Kontrolle wuerde
+    # stillschweigend zu einer, die nie anschlaegt.
+    if mutant_text == original_text:
+        return None, "Mutant ist Zeichen fuer Zeichen das Original - es wurde nichts ersetzt."
+    pfad = os.path.join(tmp, f"mutant{nr}.py")
+    with io.open(pfad, "wb") as f:
+        f.write(mutant_text.encode("utf-8"))
     return pfad, ""
 
 
@@ -872,9 +894,7 @@ def main() -> int:
         print(f"GEGENPROBE: {WAECHTER} fehlt - es lief nichts.", file=sys.stderr)
         return 2
 
-    with io.open(WAECHTER, "rb") as f:
-        original_text = f.read().decode("utf-8")
-    sha_vorher = sha(WAECHTER)
+    original_text, sha_vorher = waechter_lesen()
 
     bestanden = 0
     gefallen = 0
@@ -910,8 +930,7 @@ def main() -> int:
                     maengel.append(f"'{t}' fehlt in der Ausgabe")
 
             # 2 MUTANT
-            mutant, grund = _mutant_schreiben(tmp, original_text, sha_vorher, nr,
-                                              *fall["mutation"])
+            mutant, grund = _mutant_schreiben(tmp, original_text, nr, *fall["mutation"])
             if mutant is None:
                 print(f"  NICHT GELAUFEN  {fall['name']}: {grund}")
                 gefallen += 1
@@ -976,7 +995,7 @@ def main() -> int:
         print(f"\n  ── {len(UEBERSTRENG)} ZU STRENGE MUTANTEN  (jede MUSS den sauberen Baum"
               f" roeten)")
         for nr, (was, (suchen, ersetzen), form) in enumerate(UEBERSTRENG, 1):
-            mutant, grund = _mutant_schreiben(tmp, original_text, sha_vorher, 1000 + nr,
+            mutant, grund = _mutant_schreiben(tmp, original_text, 1000 + nr,
                                               suchen, ersetzen)
             if mutant is None:
                 print(f"  NICHT GELAUFEN  {was}: {grund}")
