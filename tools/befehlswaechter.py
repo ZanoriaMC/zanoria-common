@@ -36,6 +36,29 @@ WAS ER PRUEFT (fuenf Proben, je mit Kennung)
                               TabExecutor / TabCompleter und wird nirgends im Projekt mit
                               ``new <Name>(`` erzeugt. Dann kann sie niemand anmelden.
 
+SEINE REICHWEITE - das DESKRIPTOR-MODUL, ausdruecklich NICHT "das ganze Repo"
+=============================================================================
+Der Aufrufer uebergibt eine Projektwurzel (der Gradle-Anschluss uebergibt ``project.rootDir``).
+Dieser Pfad dient AUSSCHLIESSLICH dem FINDEN der Deskriptoren. Welche Java-Dateien gelesen
+werden, entscheidet ``module_finden()`` weiter unten: es sammelt je Deskriptor nur unter
+``Modul.wurzel`` - dem Verzeichnis, in dem die ``paper-plugin.yml``/``plugin.yml`` liegt.
+
+⚠️ Ein Nachbarmodul OHNE eigenen Deskriptor wird nie zu einem ``Modul`` und liefert keine
+einzige Quelle. Befehlscode dort bleibt UNGESEHEN - kein Fund, Rueckgabe 0, kein Log, kein
+Unterschied ausser der Zahl in der Zeile "geprueft N Deskriptor(en), M Java-Datei(en)". Wer die
+Zeile nicht gegen den Bestand haelt, liest ein gruenes Urteil ueber einen Ausschnitt.
+
+Am 2026-08-22 ueber die sieben angebundenen Plugin-Repos (Nexus, NexusStrike, RelicWars,
+Showdown, ZanUI, ZanoriaCommands, ZanoriaLobby) plus CoreClash gemessen, beide Richtungen mit
+derselben Klasse
+(``implements BasicCommand``, nirgends ``new``) im Deskriptor-Modul und im Nachbarmodul:
+im Deskriptor-Modul ``E_BEFEHL_NIE_ERZEUGT`` und Rueckgabe 1, im Nachbarmodul "keine Funde" und
+Rueckgabe 0. Betroffen sind die zwei mehrmoduligen Repos:
+  NexusStrike  101 Java-Dateien im Repo, gemeldet 54 (``:core`` 46 + Sonde 1 blind)
+  ZanUI         49 Java-Dateien im Repo, gemeldet  9 (``:core`` 40 blind)
+Beide ``:core`` sind heute bukkitfrei und koennen keine Befehlsschnittstelle tragen - das steht
+dort aber nur als KOMMENTAR, keine Maschine haelt es.
+
 WAS ER NICHT PRUEFT - ausdruecklich, damit niemand mehr hineinliest als drinsteht
 =================================================================================
   * Er sieht ZEICHEN, nicht das laufende Programm. Probe E belegt eine ERZEUGUNG, nicht eine

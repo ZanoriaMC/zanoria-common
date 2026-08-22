@@ -13,6 +13,21 @@
 //          apply from: waechter
 //      }
 //
+//  ⚠️ WAS ER DANN PRUEFT - das DESKRIPTOR-MODUL, NICHT das ganze Repo.
+//  Der Task unten uebergibt ``project.rootDir``. Das ist kein Versehen, aber es heisst NICHT
+//  "das ganze Repo": das Skript benutzt den Pfad nur zum FINDEN der Deskriptoren. Die
+//  gepruefte Quellenmenge sammelt ``module_finden()`` je Deskriptor allein unter dem
+//  Verzeichnis, in dem die paper-plugin.yml/plugin.yml liegt. Ein Nachbarmodul OHNE eigenen
+//  Deskriptor liefert keine einzige Datei.
+//  ⚠️ SCHADEN: Befehlscode im Nachbarmodul bleibt ungesehen - keine Meldung, Rueckgabe 0,
+//  im Log nichts. Der einzige Zeuge ist die Zahl in "geprueft N Deskriptor(en), M
+//  Java-Datei(en)"; wer sie nicht gegen den Bestand haelt, liest ein gruenes Urteil ueber
+//  einen Ausschnitt. Am 2026-08-22 gemessen: NexusStrike 101 Dateien im Repo / 54 gemeldet,
+//  ZanUI 49 / 9. Die uebrigen fuenf angebundenen Repos (Nexus 568/568, RelicWars 183/183,
+//  Showdown 65/65, ZanoriaCommands 6/6, ZanoriaLobby 5/5) sind einmodulig - dort deckt sich
+//  beides, aber nur solange das so bleibt.
+//  Wer das aendern will, aendert dieses Skript - und das trifft alle Verbraucher zugleich.
+//
 //  ⚠️ Die if/throw-Kombination ist keine Umstaendlichkeit. Ein blosses
 //  `if (waechter.isFile()) apply from: waechter` verschwindet lautlos, sobald jemand die Datei
 //  umbenennt — ein Waechter, der bei einem Tippfehler still aussetzt, ist kein Waechter
