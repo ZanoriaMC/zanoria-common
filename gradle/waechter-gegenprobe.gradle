@@ -61,23 +61,44 @@
 //  bevor irgendwer den Anker nachzieht.
 //
 //
-//  ⚠️ WAS DIE GEGENPROBE NICHT DECKT — am 2026-08-22 gemessen, nicht geschaetzt
-//  ═══════════════════════════════════════════════════════════════════════════
-//  22 Mutationen einzeln in den Waechter gesetzt und gemessen, welche auffliegt: 12 rot,
-//  ZEHN still. Die stillen sind kein Restrisiko, sondern der Befund:
-//    * Die Gegenprobe hat KEINEN Fall der Gegenrichtung. Sie kann Ueber-Meldung nicht sehen:
-//      Kommentarabtrennung aus, ``deklarierte_befehle`` leer, ``aliases`` nicht mehr gezaehlt,
-//      Erzeugungsregex zu streng — alles gruen. (Den Kommentarfall faengt wenigstens
-//      ``befehlswaechter.py --selbsttest``, die anderen drei niemand.)
-//    * Sie faengt nur die GANZE Toetung einer Probe, nicht die halbe: D ohne die
-//      onTabComplete-Haelfte, E ohne CommandExecutor/TabExecutor/TabCompleter, E ohne
-//      ``record`` — alles gruen.
-//    * Sie prueft die Maschinerie um die Proben herum nicht: YAML-Kommentare, die Ausnahmedatei
-//      (eine Ausnahme mit LEERER Begruendung darf nicht gelten), und — am schwersten — die
-//      Stillegarantie selbst: wird ``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, bleiben
-//      Gegenprobe UND Selbsttest gruen, und alle acht Repos melden einen bestandenen Lauf ueber
-//      eine Pruefung, die keinen einzigen Deskriptor gesehen hat.
-//  Diese Anbindung macht die Gegenprobe wirksam. Sie macht sie nicht vollstaendig.
+//  ⚠️ WAS DIE GEGENPROBE DECKT — am 2026-08-22 gemessen, nicht geschaetzt
+//  ═══════════════════════════════════════════════════════════════════════
+//  Gemessen wird mit ``tools/mutationskatalog.py``: 22 Beschaedigungen einzeln in den Waechter
+//  gesetzt, danach je Gegenprobe UND Selbsttest gegen den beschaedigten Waechter. Rot heisst
+//  gefangen, gruen heisst STILL — und still heisst: acht Repos bauen weiter gruen ueber einer
+//  Pruefung, die an dieser Stelle nichts mehr prueft.
+//
+//    VORHER  (Stand des Vormittags)   11 gefangen, 11 STILL
+//    NACHHER (nach der Reparatur)     22 gefangen,  0 STILL
+//
+//  Die elf stillen waren drei Bauarten, und alle drei sind geschlossen:
+//    * KEINE GEGENRICHTUNG. ``gift_ok`` verlangte nur ``rc==1`` und dass die Kennung irgendwo
+//      in der Ausgabe steht — zusaetzliche Falschfunde fielen nicht auf, Ueber-Meldung war
+//      unsichtbar. Jetzt prueft jeder Giftbaum die GENAUE Kennungsmenge und die GENAUE
+//      Fundzahl, und es gibt einen SAUBEREN Baum (Abschnitt 2), auf dem jeder Fund ein
+//      Falschfund ist. Sieben "zu strenge" Mutanten (Abschnitt 3) muessen ihn roeten.
+//    * NUR GANZE TOETUNGEN. Jede Alternative jeder Probe hat jetzt ihren eigenen Giftbaum:
+//      D ueber onCommand UND ueber onTabComplete, E ueber alle vier Schnittstellen und ueber
+//      ``record``, C ueber beide getCommand-Regexe mit Umbruch vor der Klammer.
+//    * DIE MASCHINERIE war Prosa. Ausnahme ohne Begruendung, Dublette, und — am schwersten —
+//      die Stillegarantie selbst.
+//
+//  ⚠️ Die Stillegarantie ist der teuerste Fall und deshalb hier ausdruecklich: wurde
+//  ``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, blieben Gegenprobe UND Selbsttest gruen,
+//  waehrend alle acht Repos einen BESTANDENEN Lauf ueber NULL gesehene Deskriptoren melden.
+//  Sie ist jetzt vierfach: kein Deskriptor, Wurzel ohne Deskriptor, keine Java-Datei, Modul
+//  ohne Quellen. Und ihr Giftbaum prueft die RUECKGABE, nicht den Text — der Mutant druckt die
+//  Warnung naemlich weiter und aendert nur das Urteil.
+//
+//  ⚠️ WAS SIE WEITERHIN NICHT DECKT
+//    * Die Lage ``UNGEPRUEFT`` einer veralteten Ausnahme — sie braucht einen Baum mit einem
+//      Modul OHNE Deskriptor und ist von ``--selbsttest`` gedeckt, nicht von hier.
+//    * Sie misst den Waechter gegen WEGWERFBAEUME, nicht gegen den Bestand. Dass er in ZanUI
+//      nur 9 von 49 Java-Dateien sieht, sagt keine dieser Pruefungen — das steht als offener
+//      Befund in ``befehlswaechter.gradle``.
+//    * Der Katalog haengt NICHT an ``check`` (22 volle Laeufe, einige hundert Unterprozesse).
+//      Er gehoert vor und nach eine Aenderung am Waechter, von Hand. Ein Kommentar ist kein
+//      Aufruf — deshalb steht das hier als offener Befund und nicht als Zusicherung.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def gegenprobeSkript = file("${project.rootDir}/tools/waechter-gegenprobe.py")
@@ -88,8 +109,8 @@ def gegenprobePfad = gegenprobeSkript.absolutePath
 
 tasks.register("waechterGegenprobe") {
     group = "verification"
-    description = "Belegt, dass die fuenf Proben des Befehlswaechters wirklich pruefen" +
-                  " (Gift + Mutant + Zeuge je Probe)."
+    description = "Belegt beide Richtungen des Befehlswaechters: Giftbaum + Mutant + Zeuge je" +
+                  " Alternative, dazu ein sauberer Baum, auf dem jeder Fund ein Falschfund ist."
 
     // ⚠️ Kein `inputs`/`outputs`, ausdruecklich kein UP-TO-DATE. `Task :x UP-TO-DATE` ist eine
     // Gruenmeldung ueber einen Lauf, der nicht stattgefunden hat — und dieser Task existiert

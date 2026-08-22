@@ -74,8 +74,16 @@ WAS ER NICHT PRUEFT - ausdruecklich, damit niemand mehr hineinliest als drinsteh
 WIE ER GEGEN SEINE EIGENE STILLE GESICHERT IST (Standing Rules 16, 22, 29)
 ==========================================================================
   * Er nennt IMMER, wieviel er gesehen hat ("geprueft: N Deskriptoren, M Java-Dateien").
-  * Findet er KEINEN Deskriptor, ist das NICHT gruen, sondern Rueckgabe 2 (NICHTS GEPRUEFT).
-    Ein Werkzeug, das nichts findet, hat nicht bewiesen, dass nichts da ist.
+  * Hat er NICHTS in der Hand gehabt, ist das NICHT gruen, sondern Rueckgabe 2 (NICHTS
+    GEPRUEFT). Ein Werkzeug, das nichts findet, hat nicht bewiesen, dass nichts da ist.
+    ⚠️ Das sind VIER Wege, nicht einer - bis zum 2026-08-22 war nur der erste abgedeckt, die
+    anderen drei druckten "keine Funde" und gaben 0 zurueck. Die Liste steht bei
+    ``blindstellen()`` samt Begruendung, warum die Grenze bei NULL liegt und nicht bei "wenig":
+      KEIN DESKRIPTOR         gar keine paper-plugin.yml/plugin.yml gefunden
+      WURZEL OHNE DESKRIPTOR  eine von mehreren uebergebenen Wurzeln traegt nichts bei
+      KEINE JAVA-DATEI        Deskriptoren da, aber keine einzige Quelle - B bis E liefen nie
+      MODUL OHNE QUELLEN      ein Modul liefert nichts, ein anderes laesst den Lauf gruen
+                              aussehen
   * Er entfernt Kommentare und Zeichenketten-Literale VOR jeder Suche. Ohne das schlaegt er auf
     genau den Kommentaren an, die den Fehler erklaeren - ZanUI und HeavyCrown fuehren beide das
     Wort ``getCommand`` in ihrem Javadoc, und HeavyCrowns Test-Javadoc nennt ``commands:``.
@@ -85,7 +93,10 @@ RUECKGABEWERTE
 ==============
   0  nichts gefunden, und es wurde etwas geprueft
   1  Funde vorhanden (der Bau soll rot werden)
-  2  nichts geprueft - Werkzeug oder Aufruf kaputt, NICHT gruen
+  2  nichts geprueft - Werkzeug oder Aufruf kaputt, NICHT gruen (vier Lagen, siehe
+     ``blindstellen()``). ⚠️ 2 wird VOR allem anderen entschieden: ein Lauf, der nichts gesehen
+     hat, darf weder "keine Funde" noch "Funde" melden, denn beides waere eine Aussage ueber
+     Code, den er nie gelesen hat.
   3  Aufruf falsch
   4  keine offenen Funde, aber mindestens eine VERALTETE Ausnahme (der Bau soll rot werden)
      ⚠️ 1 schlaegt 4: liegen echte Funde vor, ist das der Rueckgabewert, und die veralteten
@@ -135,7 +146,19 @@ SELBSTTEST
 ``python3 befehlswaechter.py --selbsttest`` baut Wegwerfbaeume fuer jede der fuenf Proben und
 fuer die Gegenrichtung (ein sauberes Plugin muss gruen sein) und meldet jede einzeln. Danach
 laeuft der Ausnahmeteil: derselbe Baum mit und ohne Ausnahmedatei (die Zeile muss erscheinen
-bzw. fehlen) und je ein Baum fuer WEG, GEGENSTANDSLOS und UNGEPRUEFT.
+bzw. fehlen) und je ein Baum fuer WEG, GEGENSTANDSLOS und UNGEPRUEFT. Zuletzt die
+Stillegarantie: je ein Baum fuer die vier Blindstellen plus ein gesunder, der KEINE haben darf.
+⚠️ Dieser letzte Teil ruft ``main()`` und prueft dessen RUECKGABEWERT, nicht ein internes Feld -
+die Mutation, gegen die er steht, aendert nicht die Erkennung, sondern das Urteil.
+
+WER PRUEFT DIESEN WAECHTER
+==========================
+  ``tools/waechter-gegenprobe.py``  Giftbaeume je Alternative + ein anspruchsvoller SAUBERER
+                                    Baum gegen Ueber-Meldung + zu strenge Mutanten.
+  ``--selbsttest`` (hier)           Gegenrichtung, Kommentarfall, Ausnahmen, Stillegarantie.
+  ``tools/mutationskatalog.py``     misst, wieviel die beiden oben wirklich fangen. Am
+                                    2026-08-22 vor der Reparatur: 11 von 22 still. Danach: 0.
+Alle drei haengen an ``check`` von zanoria-common - bis auf den Katalog, der von Hand laeuft.
 """
 
 from __future__ import annotations
@@ -341,9 +364,13 @@ def gehe(wurzel: str):
 class Modul:
     """Ein Deskriptor plus die Java-Quellen, die dazugehoeren."""
 
-    def __init__(self, deskriptor: str, ist_paper: bool):
+    def __init__(self, deskriptor: str, ist_paper: bool, herkunft: str = ""):
         self.deskriptor = deskriptor
         self.ist_paper = ist_paper
+        # ⚠️ Die WURZEL, unter der dieser Deskriptor gefunden wurde. Ohne sie laesst sich nicht
+        # sagen, ob eine uebergebene Wurzel ueberhaupt etwas beigetragen hat - siehe
+        # blindstellen(), Lage WURZEL OHNE DESKRIPTOR.
+        self.herkunft = herkunft
         # .../<modul>/src/<menge>/resources/<datei>  ->  .../<modul>
         res = os.path.dirname(deskriptor)
         menge = os.path.dirname(res)
@@ -361,12 +388,12 @@ def module_finden(wurzeln: list[str]) -> list[Modul]:
         for pfad in gehe(w):
             name = os.path.basename(pfad)
             if name == "paper-plugin.yml":
-                module.append(Modul(pfad, True))
+                module.append(Modul(pfad, True, w))
             elif name == "plugin.yml":
                 # ⚠️ Nur echte Plugin-Deskriptoren. Eine plugin.yml irgendwo in einer Vorlage
                 # oder in einem Serververzeichnis ist nicht unser Gegenstand.
                 if f"{os.sep}resources{os.sep}" in pfad or pfad.endswith(f"resources{os.sep}plugin.yml"):
-                    module.append(Modul(pfad, False))
+                    module.append(Modul(pfad, False, w))
     for m in module:
         if os.path.isdir(m.wurzel):
             for pfad in gehe(m.wurzel):
@@ -483,15 +510,20 @@ class Ergebnis:
     """Was ein Lauf gesehen hat - Funde UND was ihm die Ausnahmen weggenommen haben."""
 
     __slots__ = ("funde", "deskriptoren", "java_dateien", "ausnahmen", "veraltet",
-                 "beanstandungen")
+                 "beanstandungen", "module", "wurzeln")
 
-    def __init__(self, funde, deskriptoren, java_dateien, ausnahmen, veraltet, beanstandungen):
+    def __init__(self, funde, deskriptoren, java_dateien, ausnahmen, veraltet, beanstandungen,
+                 module=(), wurzeln=()):
         self.funde: list[str] = funde
         self.deskriptoren: int = deskriptoren
         self.java_dateien: int = java_dateien
         self.ausnahmen: list[Ausnahme] = ausnahmen
         self.veraltet: list[tuple[Ausnahme, str]] = veraltet
         self.beanstandungen: list[str] = beanstandungen
+        # ⚠️ Nur mit diesen beiden laesst sich "nichts gefunden" von "nichts gesehen"
+        # unterscheiden. Siehe blindstellen().
+        self.module: list = list(module)
+        self.wurzeln: list[str] = list(wurzeln)
 
     @property
     def angewandt(self) -> list[Ausnahme]:
@@ -683,7 +715,104 @@ def pruefe(wurzeln: list[str]) -> Ergebnis:
         else:
             veraltet.append((a, VERALTET_UNGEPRUEFT))
 
-    return Ergebnis(funde, len(module), java_gesehen, ausnahmen, veraltet, beanstandungen)
+    return Ergebnis(funde, len(module), java_gesehen, ausnahmen, veraltet, beanstandungen,
+                    module, wurzeln)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DIE STILLEGARANTIE - jeder Weg, "bestanden" zu melden, ohne etwas gesehen zu haben
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ Bis zum 2026-08-22 stand hier EIN Fall, und zwar als nackte Zeile ``return 2`` mitten in
+# ``main()``: null Deskriptoren. Zwei Dinge waren daran falsch.
+#
+#   1  Er war nicht der einzige Weg. Ein Deskriptor OHNE eine einzige Java-Datei daneben, ein
+#      zweites Modul, das keine Quelle liefert, eine uebergebene Wurzel, die gar nichts
+#      beitraegt - jeder dieser Laeufe druckte "keine Funde" und gab 0 zurueck. Der Waechter
+#      hatte in all diesen Faellen NICHTS in der Hand und meldete trotzdem einen bestandenen
+#      Lauf. Es ist derselbe Fall wie null Deskriptoren, nur eine Ebene tiefer.
+#   2  Er war UNGEPRUEFT. Wer ``return 2`` zu ``return 0`` machte, bekam von Gegenprobe und
+#      Selbsttest gruen - am 2026-08-22 als Mutation M21 gemessen. Die Stillegarantie war
+#      damit selbst die Stille, gegen die sie steht.
+#
+# Deshalb steht die Frage jetzt an EINER Stelle, gibt GRUENDE statt eines Wahrheitswerts zurueck
+# (jeder Grund ist eine eigene Zeile in der Ausgabe und damit einzeln pruefbar), und beide
+# Absicherungen fahren sie an: ``waechter-gegenprobe.py`` (Fall NICHTS_GEPRUEFT und Geschwister)
+# und ``--selbsttest`` (Abschnitt "Stillegarantie").
+#
+# ⚠️ WO DIE GRENZE LIEGT UND WARUM GENAU DORT: bei NULL, nicht bei "wenig".
+# ZanoriaLobby hat FUENF Java-Dateien, ZanoriaCommands SECHS - beide vollstaendig und richtig
+# gesehen. Eine Mindestzahl waere geraten und wuerde diese zwei Repos dauerhaft rot faerben,
+# ohne dass dort irgendetwas fehlt; sie muesste dann per Ausnahme abgeschaltet werden, und eine
+# abgeschaltete Grenze ist keine. Null dagegen ist kein Schaetzwert, sondern eine Aussage ueber
+# das Werkzeug selbst: der Waechter kann ueber eine Datei, die er nie gelesen hat, nichts
+# behaupten - und ueber null gelesene Dateien behauptet er genau nichts. Der Satz "ich habe
+# nichts gefunden" setzt voraus, dass gesucht wurde; bei null ist diese Voraussetzung falsch,
+# bei fuenf ist sie wahr. Die Grenze trennt also nicht viel von wenig, sondern GESUCHT von
+# NICHT GESUCHT, und dazwischen liegt nichts Ermessbares.
+
+BLIND_KEIN_DESKRIPTOR = "KEIN DESKRIPTOR"
+BLIND_WURZEL_LEER = "WURZEL OHNE DESKRIPTOR"
+BLIND_KEINE_QUELLE = "KEINE JAVA-DATEI"
+BLIND_MODUL_OHNE_QUELLEN = "MODUL OHNE QUELLEN"
+
+
+def blindstellen(e: Ergebnis) -> list[tuple[str, str]]:
+    """Gibt (Lage, Satz) je Weg zurueck, auf dem dieser Lauf NICHTS in der Hand hatte.
+
+    Leere Liste heisst: es wurde wirklich etwas gesehen. Nur dann darf ein Urteil fallen.
+    """
+    gruende: list[tuple[str, str]] = []
+
+    if e.deskriptoren == 0:
+        gruende.append((
+            BLIND_KEIN_DESKRIPTOR,
+            "keine paper-plugin.yml und keine plugin.yml gefunden. Ohne Deskriptor gibt es kein"
+            " Modul, ohne Modul keine gelesene Quelle - dieser Lauf hat NICHTS geprueft."
+            " Falscher Pfad, oder der Deskriptor liegt nicht unter src/*/resources/."))
+    else:
+        # ⚠️ Nur sinnvoll, wenn mehr als eine Wurzel uebergeben wurde; bei einer sagt es der
+        # Fall darueber schon. Mehrere Wurzeln sind der gefaehrlichere Aufruf: EINE davon kann
+        # ins Leere zeigen, waehrend die anderen den Lauf gruen aussehen lassen.
+        if len(e.wurzeln) > 1:
+            beigetragen = {m.herkunft for m in e.module}
+            for w in e.wurzeln:
+                if w not in beigetragen:
+                    gruende.append((
+                        BLIND_WURZEL_LEER,
+                        f"{w} hat keinen einzigen Deskriptor beigetragen. Die anderen Wurzeln"
+                        f" haben welche - der Lauf saehe also gruen aus, waehrend dieser Pfad"
+                        f" komplett ungesehen bleibt."))
+
+    if e.deskriptoren > 0 and e.java_dateien == 0:
+        gruende.append((
+            BLIND_KEINE_QUELLE,
+            "es gibt Deskriptoren, aber unter keinem von ihnen liegt eine einzige .java-Datei."
+            " Die Proben B bis E lesen ausschliesslich Java-Quellen; sie sind in diesem Lauf"
+            " allesamt nicht zum Zuge gekommen. 'Keine Funde' heisst hier 'nicht gesucht'."))
+
+    for m in e.module:
+        if not m.quellen:
+            gruende.append((
+                BLIND_MODUL_OHNE_QUELLEN,
+                f"{m.deskriptor} meldet ein Plugin an, aber unter {m.wurzel} liegt keine einzige"
+                f" .java-Datei. Fuer dieses Modul sind B bis E nicht gelaufen. Ein anderes Modul"
+                f" kann den Lauf trotzdem gruen aussehen lassen - genau diese Mischung ist"
+                f" gefaehrlich."))
+
+    return gruende
+
+
+def zeilen_blindstellen(gruende: list[tuple[str, str]]) -> list[str]:
+    zeilen = [
+        f"BEFEHLSWAECHTER: NICHTS GEPRUEFT - {len(gruende)} Blindstelle(n). Das ist KEIN"
+        f" bestandener Lauf. Ein Werkzeug, das nichts gesehen hat, hat nicht bewiesen, dass"
+        f" nichts da ist.",
+    ]
+    for lage, satz in gruende:
+        zeilen.append(f"  BLIND  {lage}")
+        zeilen.extend(_umbruch(satz, "      "))
+    return zeilen
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -928,6 +1057,108 @@ def selbsttest_ausnahmen() -> tuple[int, int]:
     return bestanden, gefallen
 
 
+def selbsttest_stille() -> tuple[int, int]:
+    """Positivkontrolle fuer die Stillegarantie. Gibt (bestanden, gefallen) zurueck.
+
+    ⚠️ Diese Faelle rufen ``main()`` und pruefen SEINEN Rueckgabewert, nicht ``blindstellen()``.
+    Das ist der Unterschied, der zaehlt: die Mutation, gegen die dieser Abschnitt steht, aendert
+    nicht die Erkennung, sondern das Urteil - ``return 2`` zu ``return 0``. Eine Zusicherung auf
+    ``blindstellen(e) != []`` waere davon voellig unberuehrt geblieben und haette gruen
+    gemeldet, waehrend acht Repos einen bestandenen Lauf ueber null Deskriptoren drucken.
+    """
+    import contextlib
+
+    def fahre(wurzeln: list[str]) -> tuple[int, str]:
+        aus, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(aus), contextlib.redirect_stderr(err):
+            rc = main(list(wurzeln))
+        return rc, aus.getvalue() + err.getvalue()
+
+    faelle: list[tuple[str, object, object]] = []
+
+    # 1  Gar kein Deskriptor.
+    def bau_leer(w):
+        _schreibe(os.path.join(w, "liesmich.txt"), "hier ist kein Plugin\n")
+        return [w]
+
+    faelle.append(("KEIN DESKRIPTOR: leerer Baum -> Rueckgabe 2", bau_leer,
+                   lambda rc, t: rc == 2 and BLIND_KEIN_DESKRIPTOR in t))
+
+    # 2  Deskriptor da, aber keine einzige Java-Datei. Die Proben B-E sind nicht gelaufen.
+    def bau_ohne_java(w):
+        _schreibe(os.path.join(w, "src", "main", "resources", "paper-plugin.yml"), PAPER_SAUBER)
+        return [w]
+
+    faelle.append(("KEINE JAVA-DATEI: Deskriptor ohne Quellen -> Rueckgabe 2", bau_ohne_java,
+                   lambda rc, t: rc == 2 and BLIND_KEINE_QUELLE in t))
+
+    # 3  Zwei Module, eines ohne Quellen. ⚠️ Der gefaehrlichste Fall: das andere Modul laesst
+    #    den Lauf gruen aussehen.
+    def bau_modul_ohne_quellen(w):
+        _schreibe(os.path.join(w, "plugin", "src", "main", "resources", "paper-plugin.yml"),
+                  PAPER_SAUBER)
+        _schreibe(os.path.join(w, "plugin", "src", "main", "java", "net", "probe", "Probe.java"),
+                  HAUPT_SAUBER)
+        _schreibe(os.path.join(w, "plugin", "src", "main", "java", "net", "probe",
+                               "Pingbefehl.java"), BEFEHL_SAUBER)
+        _schreibe(os.path.join(w, "zweit", "src", "main", "resources", "paper-plugin.yml"),
+                  PAPER_SAUBER)
+        return [w]
+
+    faelle.append(("MODUL OHNE QUELLEN: zweites Modul liefert nichts -> Rueckgabe 2",
+                   bau_modul_ohne_quellen,
+                   lambda rc, t: rc == 2 and BLIND_MODUL_OHNE_QUELLEN in t))
+
+    # 4  Zwei Wurzeln, eine traegt nichts bei.
+    def bau_zwei_wurzeln(w):
+        eins = os.path.join(w, "eins")
+        zwei = os.path.join(w, "zwei")
+        _schreibe(os.path.join(eins, "src", "main", "resources", "paper-plugin.yml"),
+                  PAPER_SAUBER)
+        _schreibe(os.path.join(eins, "src", "main", "java", "net", "probe", "Probe.java"),
+                  HAUPT_SAUBER)
+        _schreibe(os.path.join(eins, "src", "main", "java", "net", "probe", "Pingbefehl.java"),
+                  BEFEHL_SAUBER)
+        _schreibe(os.path.join(zwei, "liesmich.txt"), "diese Wurzel traegt nichts bei\n")
+        return [eins, zwei]
+
+    faelle.append(("WURZEL OHNE DESKRIPTOR: zweite Wurzel zeigt ins Leere -> Rueckgabe 2",
+                   bau_zwei_wurzeln,
+                   lambda rc, t: rc == 2 and BLIND_WURZEL_LEER in t))
+
+    # 5  ⚠️ Die Gegenrichtung, und sie ist nicht optional. Ohne sie duerfte blindstellen()
+    #    einfach IMMER etwas zurueckgeben - alle vier Faelle oben blieben "bestanden", und der
+    #    Waechter waere in allen acht Repos dauerhaft rot, ohne dass irgendetwas fehlt.
+    def bau_gesund(w):
+        _schreibe(os.path.join(w, "src", "main", "resources", "paper-plugin.yml"), PAPER_SAUBER)
+        _schreibe(os.path.join(w, "src", "main", "java", "net", "probe", "Probe.java"),
+                  HAUPT_SAUBER)
+        _schreibe(os.path.join(w, "src", "main", "java", "net", "probe", "Pingbefehl.java"),
+                  BEFEHL_SAUBER)
+        return [w]
+
+    faelle.append(("GRUEN gesunder Baum: keine Blindstelle, Rueckgabe 0", bau_gesund,
+                   lambda rc, t: rc == 0 and "NICHTS GEPRUEFT" not in t))
+
+    bestanden = 0
+    gefallen = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        for nr, (bezeichnung, bauen, pruefung) in enumerate(faelle, 1):
+            w = os.path.join(tmp, f"stille{nr}")
+            os.makedirs(w, exist_ok=True)
+            wurzeln = bauen(w)
+            rc, text = fahre(wurzeln)
+            ok = bool(pruefung(rc, text))
+            print(f"  {'OK  ' if ok else 'FEHL'} {bezeichnung}   (Rueckgabe {rc})")
+            if not ok:
+                gefallen += 1
+                for z in text.splitlines():
+                    print(f"         | {z}")
+            else:
+                bestanden += 1
+    return bestanden, gefallen
+
+
 def selbsttest() -> int:
     faelle = []
 
@@ -1041,6 +1272,11 @@ public final class Probe extends JavaPlugin {
     bestanden += a_bestanden
     gefallen += a_gefallen
 
+    print("")
+    s_bestanden, s_gefallen = selbsttest_stille()
+    bestanden += s_bestanden
+    gefallen += s_gefallen
+
     print(f"\nSelbsttest: {bestanden} von {bestanden + gefallen} bestanden.")
     return 0 if gefallen == 0 else 1
 
@@ -1070,13 +1306,14 @@ def main(argv: list[str]) -> int:
     e = pruefe(wurzeln)
 
     # ⚠️ Standing Rule 22/29: ein Werkzeug, das nichts findet, muss das von "nichts geprueft"
-    # unterscheiden koennen. Null Deskriptoren ist NICHT gruen.
+    # unterscheiden koennen. Die vollstaendige Liste dieser Wege steht in blindstellen().
     print(f"BEFEHLSWAECHTER: geprueft {e.deskriptoren} Plugin-Deskriptor(en),"
           f" {e.java_dateien} Java-Datei(en) in {', '.join(wurzeln)}")
-    if e.deskriptoren == 0:
-        print("BEFEHLSWAECHTER: NICHTS GEPRUEFT - keine paper-plugin.yml und keine plugin.yml"
-              " gefunden. Das ist kein bestandener Lauf. Falscher Pfad, oder der Deskriptor"
-              " liegt nicht unter src/*/resources/.", file=sys.stderr)
+
+    blind = blindstellen(e)
+    if blind:
+        for z in zeilen_blindstellen(blind):
+            print(z, file=sys.stderr)
         return 2
 
     # ⚠️ Diese drei Bloecke stehen VOR dem Urteil und laufen bei JEDEM Ausgang - auch bei
