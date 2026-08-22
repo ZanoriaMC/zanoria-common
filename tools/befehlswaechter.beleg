@@ -1,0 +1,13 @@
+1a7d98e1f616685a52c0ad314187913685c01a2e89ed39eb6e7713398ee82556
+
+# Fingerabdruck (SHA-256, Zeilenenden auf \n normalisiert) von befehlswaechter.py,
+# geschrieben von :waechterBeleg NACH bestandener Gegenprobe und bestandenem
+# Selbsttest. Die erste nichtleere Zeile ist der Wert, alles Weitere ist Prosa.
+#
+# Die neun Verbraucher lesen ihn in gradle/befehlswaechter.gradle und fallen bei
+# Abweichung. Grund: sie bauen 262-mal so oft wie zanoria-common (gemessen am
+# 2026-08-22), und ohne diesen Vergleich liefe dort ein Waechter, den seit seiner
+# letzten Aenderung nichts geprueft hat.
+#
+# ⚠️ NICHT VON HAND AENDERN. Wer hier den Wert eintippt, statt check zu fahren,
+# stellt eine bestandene Gegenprobe aus, die nicht stattgefunden hat.

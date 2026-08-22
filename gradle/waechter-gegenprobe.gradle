@@ -38,21 +38,29 @@
 //     ``tools/befehlswaechter.py``. Diese Datei aendert sich, wenn zanoria-common sich aendert —
 //     nicht, wenn NexusStrike sich aendert. Achtmal je Commit dasselbe Invariant messen ist
 //     nicht sparsam, sondern schlicht am falschen Ausloeser.
-//   * ⚠️ ES LAEUFT WIRKLICH. zanoria-common hat eine CI (``.github/workflows/ci.yml``, push auf
-//     main + jeder PR, ``./gradlew build`` — und ``build`` zieht ``check``). Von den ACHT
-//     Verbrauchern haben nur DREI eine (Nexus, RelicWars, CoreClash); NexusStrike, Showdown,
-//     ZanUI, ZanoriaCommands und ZanoriaLobby haben keine. Eine Anbindung je Verbraucher liefe
-//     also bei fuenf von acht ueberhaupt nur, wenn ein Mensch dort von Hand ``check`` faehrt.
+//   * ⚠️ ZURUECKGEZOGEN am 2026-08-22 — hier stand "ES LAEUFT WIRKLICH, zanoria-common hat eine
+//     CI (``.github/workflows/ci.yml``, push auf main + jeder PR)". Die Datei gibt es, der
+//     Ausloeser ist der Push, und GEPUSHT WIRD NICHT: an dem Tag stand jedes der elf Repos vor
+//     seinem ``origin`` (zanoria-common 12 Commits, Nexus 80, NexusService 26, CoreClash 19,
+//     ZanoriaGame 14 ...), letzter gepushter Stand 2026-07-24. Ein Ausloeser, den niemand
+//     ausloest, ist genau die Bauart Zusicherung, gegen die dieses ganze Bauwerk steht — und er
+//     hat hier eine Entscheidung getragen. Was von dem Punkt bleibt: von den neun Verbrauchern
+//     haben nur drei ueberhaupt eine CI-Datei (Nexus, RelicWars, CoreClash). Das ist ein
+//     Argument gegen die Anbindung je Verbraucher, aber KEINES fuer die Wirksamkeit dieser hier.
 //   * Eine Aenderung an ``befehlswaechter.gradle`` trifft alle acht zugleich. Diese hier trifft
 //     ein Repo.
 //
 //  GEGEN zentral — der Preis, benannt statt weggelassen
 //   * ⚠️ Sie laeuft nur, wenn jemand zanoria-common baut. Wer ``tools/befehlswaechter.py``
-//     oertlich aendert und danach nur die acht Verbraucher baut, bekommt acht gruene Laeufe und
-//     keine Gegenprobe. Die CI faengt es beim Push — aber erst dort.
-//   * Das schliesst kein Task und kein Kommentar. Es ist eine Arbeitsweise: WER
-//     ``tools/befehlswaechter.py`` ANFASST, BAUT zanoria-common. Ein Kommentar ist kein Aufruf —
-//     deshalb steht das hier als offener Befund und nicht als Zusicherung.
+//     oertlich aendert und danach nur die Verbraucher baut, bekommt neun gruene Laeufe und keine
+//     Gegenprobe. Am 2026-08-22 gemessen, wie oft das der Fall ist: 262 Verbraucher-Baeufe je
+//     zanoria-common-Bau (Zahlen unten unter DER BELEG). Der Preis war also nicht klein,
+//     sondern der Regelfall.
+//   * ⚠️ Hier stand: "Das schliesst kein Task und kein Kommentar. Es ist eine Arbeitsweise."
+//     Das war die Kapitulation. GESCHLOSSEN am 2026-08-22 durch ``:waechterBeleg`` unten und
+//     ``:befehlswaechterBeleg`` in ``befehlswaechter.gradle``: nicht die Gegenprobe laeuft jetzt
+//     in den neun Verbrauchern, sondern die Frage, OB sie fuer den dort angewandten Waechter je
+//     gelaufen ist. Die Arbeitsweise ist damit eine Maschine.
 //
 //  VERWORFEN: je Verbraucher zusaetzlich. Das haette den Preis oben bezahlt, aber acht Repos an
 //  ein Ergebnis gehaengt, das keiner von ihnen beeinflussen kann. Zusaetzlich faellt die
@@ -271,9 +279,159 @@ tasks.register("waechterSelbsttest") {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  DER BELEG — der zweite Ausloeser, weil der erste fast nie feuert
+//  ═══════════════════════════════════════════════════════════════
+//  ⚠️ Am 2026-08-22 an den Gradle-Daemon-Protokollen gemessen (``~/.gradle/daemon/*/*.log``,
+//  Zeile "Received command: Build"), Fenster 2026-08-02 bis 2026-08-21, der heutige Tag
+//  ausgenommen weil ihn die Arbeit am Waechter selbst verfaelscht:
+//
+//      zanoria-common (eigener Wrapper, Gradle 8.13)        20 Baeufe an  4 von 20 Tagen
+//      die Verbraucher (Gradle 8.8 / 8.14 / 8.14.3)       5248 Baeufe an 19 von 20 Tagen
+//
+//  Das sind 262 Verbraucher-Baeufe je zanoria-common-Bau. Die Gegenprobe oben haengt am
+//  ``check`` DIESES Repos — sie feuert damit in rund 0,4 % der Baeufe dieser Familie.
+//  ⚠️ Und die CI faengt es NICHT: am 2026-08-22 stand jedes der elf Repos VOR seinem
+//  ``origin`` (zanoria-common 12 Commits, Nexus 80, NexusService 26 ...), der letzte gepushte
+//  Stand war der 2026-07-24. Ein Arbeitsablauf ohne Push hat keine CI, egal was in
+//  ``.github/workflows/ci.yml`` steht. Der Satz "ES LAEUFT WIRKLICH" weiter oben war zum
+//  Zeitpunkt, an dem er geschrieben wurde, bereits vier Wochen falsch.
+//
+//  DIE FOLGE, unbeschoenigt: wer ``tools/befehlswaechter.py`` aendert und danach nur die
+//  Verbraucher baut — der statistisch weit haeufigere Fall —, bekommt neun gruene Laeufe ueber
+//  einem Waechter, den nichts belegt hat. Genau die Lage, gegen die die Gegenprobe steht.
+//
+//  WAS DER BELEG MACHT
+//  ───────────────────
+//  Nach bestandener Gegenprobe UND bestandenem Selbsttest schreibt dieser Task den
+//  Fingerabdruck des geprueften Waechters nach ``tools/befehlswaechter.beleg``.
+//  ``befehlswaechter.gradle`` — angewendet in ALLEN neun Verbrauchern — bildet denselben
+//  Fingerabdruck und vergleicht. Weicht er ab, faellt der Verbraucher-Bau.
+//
+//  ⚠️ Damit ist der Ausloeser dort, wo die Baeufe sind, OHNE die Gegenprobe achtfach zu fahren.
+//  Der Verbraucher rechnet einen SHA-256 ueber 68 kB — Bruchteile einer Millisekunde, kein
+//  Unterprozess, keine 22 Mutanten.
+//
+//  ⚠️ WARUM DAS ETWAS ANDERES IST ALS DIE VERWORFENE ACHTFACHE ANBINDUNG (Absatz oben):
+//  Verworfen wurde, die Verbraucher an das ERGEBNIS der Gegenprobe zu haengen — die faellt auch
+//  aus Gruenden, die kein Verbraucher beeinflussen kann (fehlender Mutationsanker, kein Python,
+//  ein halb umgebauter Waechter), und schickt den, der sie debuggt, in den falschen Baum. Der
+//  Beleg hat genau EINE Ursache und genau EINE Behebung, und beide stehen in der Fehlermeldung:
+//  der Waechter wurde geaendert, ohne dass ihn jemand belegt hat -> ``check`` in zanoria-common
+//  fahren. Das ist kein fremder Fehler im falschen Baum, sondern der eigene Zustand des
+//  Werkzeugs, das dieser Bau gerade benutzt.
+//
+//  ⚠️ DER PREIS, benannt statt weggelassen: wer den Waechter umbaut, roetet damit alle neun
+//  Verbraucher, bis er einmal ``check`` in zanoria-common faehrt. Das ist gewollt — waehrend
+//  dieser Zeit laeuft dort ein unbelegter Waechter —, aber es ist eine echte Unterbrechung
+//  mitten in einer Aenderung, kein kostenloser Zusatz.
+//
+//  ⚠️ DIE DOPPELUNG: die Fingerabdruck-Bildung steht zweimal, hier und in
+//  ``befehlswaechter.gradle``. Das ist Absicht — ein drittes ``apply from:`` waere eine weitere
+//  Stelle, die bei einem Tippfehler still aussetzt. Driften die beiden auseinander, passt kein
+//  Beleg mehr und alle neun Verbraucher fallen SOFORT und LAUT. Eine stille Drift ist hier
+//  nicht moeglich; das ist die Bedingung, unter der die Doppelung vertretbar ist.
+//
+//  ⚠️ Der Beleg gehoert MIT dem Waechter in denselben Commit. Ein gepushter Waechter ohne
+//  passenden Beleg roetet jeden frischen Checkout.
+//
+//  ⚠️ AUCH VERWORFEN, und zwar an der Messung: den ``check`` des eingebundenen Baus per
+//  ``gradle.includedBuild('zanoria-common').task(':check')`` an den ``check`` des Verbrauchers
+//  haengen. Am 2026-08-22 mit einem Wegwerf-Init-Skript gegen Nexus geprueft — es GEHT: der
+//  Lauf zog ``:zanoria-common:test``, ``:waechterGegenprobe``, ``:waechterSelbsttest``,
+//  ``:waechterBeleg`` und ``:zanoria-common:check`` mit. Nur traegt es fast niemanden. Von den
+//  NEUN Repos, die ``befehlswaechter.gradle`` anwenden, bindet genau EINES zanoria-common
+//  ueberhaupt als Bau ein:
+//      Nexus            includeBuild('../ZanLang'), includeBuild('../zanoria-common')  <-- eines
+//      CoreClash        ../ZanoriaGame, ../ZanLang
+//      NexusStrike      ../ZanoriaGame, ../Nexus, ../ZanLang
+//      RelicWars        ../ZanoriaGame, ../Nexus, ../ZanLang
+//      Showdown         ../ZanoriaGame
+//      ZanoriaGame      ../ZanLang
+//      ZanUI            ../ZanLang
+//      ZanoriaCommands  (keines)
+//      ZanoriaLobby     (keines)
+//  Ein Weg, der 1 von 9 deckt, ist keine Anbindung, sondern eine Ausnahme. Der Beleg deckt 9
+//  von 9, weil er im Waechter-Skript selbst sitzt, das alle neun ohnehin anwenden.
+//  ⚠️ Ohne diese Anbindung fuehrt ein Verbraucher-Bau vom eingebundenen Bau nur das aus, was
+//  fuer das ersetzte Artefakt noetig ist. Am selben Tag mit ``./gradlew check --dry-run`` in
+//  Nexus gemessen: ``:zanoria-common:compileJava``, ``:processResources``, ``:classes``,
+//  ``:jar`` — kein ``:test``, kein ``:check``. Die Behauptung weiter unten in
+//  ``befehlswaechter.gradle`` stimmt also, sie ist jetzt auch belegt.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// ⚠️ Zeilenenden normalisiert. Ohne das haette derselbe Waechter unter Windows-Checkout mit
+// autocrlf einen anderen Fingerabdruck als unter Linux-CI, und der Beleg waere ein
+// Zufallsgenerator. Dieselbe Normalisierung steht in `befehlswaechter.gradle` — beide muessen
+// zeichengleich bleiben.
+def waechterFingerabdruck = { File datei ->
+    def roh = datei.getText("UTF-8").replace("\r\n", "\n").replace("\r", "\n")
+    return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(roh.getBytes("UTF-8")).encodeHex().toString()
+}
+
+tasks.register("waechterBeleg") {
+    group = "verification"
+    description = "Schreibt den Fingerabdruck des belegten Befehlswaechters nach" +
+                  " tools/befehlswaechter.beleg — die neun Verbraucher pruefen ihn."
+
+    // ⚠️ Kein UP-TO-DATE. Derselbe Grund wie oben, und ein zusaetzlicher: dieser Task darf nur
+    // dann schreiben, wenn die beiden Pruefungen in DIESEM Lauf wirklich gelaufen sind.
+    outputs.upToDateWhen { false }
+
+    // ⚠️ dependsOn, nicht mustRunAfter. mustRunAfter ordnet nur, wenn beide ohnehin laufen — ein
+    // `./gradlew waechterBeleg` allein wuerde sonst einen Beleg ueber einen ungeprueften
+    // Waechter schreiben. Genau die Bauart Fehler, gegen die der ganze Aufbau steht.
+    dependsOn "waechterGegenprobe"
+    dependsOn "waechterSelbsttest"
+
+    doLast {
+        def waechterSkript = file("${project.rootDir}/tools/befehlswaechter.py")
+        if (!waechterSkript.isFile()) {
+            throw new GradleException(
+                "Waechter-Beleg: ${waechterSkript} fehlt. Ein Beleg ueber eine Datei, die es" +
+                " nicht gibt, waere die teuerste Sorte gruen.")
+        }
+        def abdruck = waechterFingerabdruck(waechterSkript)
+        def beleg = new File(waechterSkript.parentFile, "befehlswaechter.beleg")
+        def vorher = beleg.isFile() ? beleg.readLines("UTF-8").find { !it.trim().isEmpty() } : null
+
+        beleg.setText(
+            abdruck + "\n" +
+            "\n" +
+            "# Fingerabdruck (SHA-256, Zeilenenden auf \\n normalisiert) von befehlswaechter.py,\n" +
+            "# geschrieben von :waechterBeleg NACH bestandener Gegenprobe und bestandenem\n" +
+            "# Selbsttest. Die erste nichtleere Zeile ist der Wert, alles Weitere ist Prosa.\n" +
+            "#\n" +
+            "# Die neun Verbraucher lesen ihn in gradle/befehlswaechter.gradle und fallen bei\n" +
+            "# Abweichung. Grund: sie bauen 262-mal so oft wie zanoria-common (gemessen am\n" +
+            "# 2026-08-22), und ohne diesen Vergleich liefe dort ein Waechter, den seit seiner\n" +
+            "# letzten Aenderung nichts geprueft hat.\n" +
+            "#\n" +
+            "# ⚠️ NICHT VON HAND AENDERN. Wer hier den Wert eintippt, statt check zu fahren,\n" +
+            "# stellt eine bestandene Gegenprobe aus, die nicht stattgefunden hat.\n",
+            "UTF-8")
+
+        if (vorher == null) {
+            logger.lifecycle("Waechter-Beleg: neu angelegt (${abdruck}).")
+        } else if (vorher != abdruck) {
+            logger.lifecycle(
+                "Waechter-Beleg: der Waechter hat sich geaendert und ist neu belegt.\n" +
+                "  vorher:  ${vorher}\n" +
+                "  jetzt:   ${abdruck}\n" +
+                "⚠️ tools/befehlswaechter.beleg gehoert MIT tools/befehlswaechter.py in" +
+                " denselben Commit — sonst roetet der naechste frische Checkout alle neun" +
+                " Verbraucher.")
+        } else {
+            logger.lifecycle("Waechter-Beleg: unveraendert (${abdruck}).")
+        }
+    }
+}
+
 // ⚠️ An `check` haengen, nicht an `build`. `build` zieht `check` mit; umgekehrt nicht. Damit
 // greift sie bei `./gradlew check`, bei `./gradlew build` und in der CI dieses Repos.
 tasks.matching { it.name == "check" }.configureEach {
     dependsOn "waechterGegenprobe"
     dependsOn "waechterSelbsttest"
+    dependsOn "waechterBeleg"
 }

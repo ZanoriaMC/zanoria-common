@@ -97,9 +97,101 @@ def waechterSkript = file("${project.rootDir}/../zanoria-common/tools/befehlswae
 // relativer Aufruf ins Leere lief und der Lauf trotzdem gruen meldete.
 def waechterPfad = waechterSkript.absolutePath
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  DER BELEG — laeuft hier, weil hier die Baeufe sind
+//  ═════════════════════════════════════════════════
+//  Dieser Waechter prueft fremden Befehlscode. Wer prueft IHN? Die Gegenprobe in
+//  ``zanoria-common/gradle/waechter-gegenprobe.gradle`` — aber die haengt am ``check`` von
+//  zanoria-common, und das ist fast nie der Bau, der gerade laeuft.
+//
+//  ⚠️ Am 2026-08-22 an ``~/.gradle/daemon/*/*.log`` gemessen (Zeile "Received command: Build"),
+//  Fenster 2026-08-02 bis 2026-08-21:
+//      zanoria-common (Gradle 8.13)                20 Baeufe an  4 von 20 Tagen
+//      die Verbraucher (8.8 / 8.14 / 8.14.3)     5248 Baeufe an 19 von 20 Tagen
+//  262 zu 1. Und die CI faengt es nicht: alle elf Repos standen an dem Tag VOR ihrem origin,
+//  letzter gepushter Stand 2026-07-24. Wer den Waechter aendert und danach nur Verbraucher
+//  baut, saehe ohne die Pruefung unten neun gruene Laeufe ueber einem unbelegten Waechter.
+//
+//  Deshalb vergleicht JEDER Verbraucher-Bau den Fingerabdruck des Waechters gegen
+//  ``tools/befehlswaechter.beleg``, den ``:waechterBeleg`` nur nach bestandener Gegenprobe UND
+//  bestandenem Selbsttest schreibt. Kosten: ein SHA-256 ueber 68 kB, kein Unterprozess.
+//
+//  ⚠️ Das ist NICHT die verworfene achtfache Anbindung der Gegenprobe selbst. Die faellt auch
+//  aus Gruenden, die kein Verbraucher beheben kann. Diese Pruefung hat genau eine Ursache und
+//  genau eine Behebung, und beide stehen in der Meldung.
+//
+//  ⚠️ Die Fingerabdruck-Bildung steht zeichengleich auch in ``waechter-gegenprobe.gradle``.
+//  Driften die beiden, passt kein Beleg mehr und alle neun Verbraucher fallen sofort und laut —
+//  eine stille Drift ist ausgeschlossen. Nur unter dieser Bedingung ist die Doppelung besser
+//  als ein drittes ``apply from:``, das bei einem Tippfehler still aussetzen koennte.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// ⚠️ Zeilenenden normalisiert: ohne das haette derselbe Waechter unter Windows-Checkout mit
+// autocrlf einen anderen Fingerabdruck als unter Linux-CI, und der Beleg waere ein
+// Zufallsgenerator, der neun Repos grundlos roetet.
+def waechterFingerabdruck = { File datei ->
+    def roh = datei.getText("UTF-8").replace("\r\n", "\n").replace("\r", "\n")
+    return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(roh.getBytes("UTF-8")).encodeHex().toString()
+}
+
+tasks.register("befehlswaechterBeleg") {
+    group = "verification"
+    description = "Prueft, dass der angewandte Befehlswaechter der ist, den die Gegenprobe in" +
+                  " zanoria-common zuletzt belegt hat."
+
+    // ⚠️ Kein UP-TO-DATE, aus demselben Grund wie beim Waechter selbst.
+    outputs.upToDateWhen { false }
+
+    doLast {
+        if (!waechterSkript.isFile()) {
+            throw new GradleException(
+                "Befehlswaechter-Beleg: ${waechterPfad} fehlt. Kein Urteil ist nicht gruen.")
+        }
+        def belegDatei = new File(waechterSkript.parentFile, "befehlswaechter.beleg")
+        if (!belegDatei.isFile()) {
+            throw new GradleException(
+                "Befehlswaechter-Beleg: ${belegDatei} fehlt. Dieser Bau wendet einen Waechter" +
+                " an, von dem nichts belegt, dass seine Proben ueberhaupt noch pruefen —" +
+                " verrutscht dort eine Regex, meldet er in allen neun Repos 'keine Funde' und" +
+                " Rueckgabe 0. Behebung: in zanoria-common einmal `./gradlew check` fahren," +
+                " dann liegt der Beleg.")
+        }
+        def erwartet = belegDatei.readLines("UTF-8").find { !it.trim().isEmpty() }?.trim()
+        if (erwartet == null || !(erwartet ==~ /[0-9a-f]{64}/)) {
+            throw new GradleException(
+                "Befehlswaechter-Beleg: ${belegDatei} enthaelt in der ersten nichtleeren Zeile" +
+                " keinen SHA-256 (gelesen: ${erwartet}). Ein unlesbarer Beleg ist kein Beleg;" +
+                " er darf nicht wie ein bestandener aussehen. Behebung: in zanoria-common" +
+                " `./gradlew check` fahren, die Datei wird dabei neu geschrieben.")
+        }
+        def gemessen = waechterFingerabdruck(waechterSkript)
+        if (gemessen != erwartet) {
+            throw new GradleException(
+                "Befehlswaechter-Beleg: der angewandte Waechter ist NICHT der belegte.\n" +
+                "  Beleg (zuletzt gegengeprueft): ${erwartet}\n" +
+                "  ${waechterPfad}: ${gemessen}\n" +
+                "⚠️ SCHADEN: dieser Bau prueft Befehlscode mit einem Waechter, den seit seiner" +
+                " letzten Aenderung nichts geprueft hat. Faellt dabei eine Probe aus, sagt das" +
+                " KEIN Log — der Waechter meldet 'keine Funde' und Rueckgabe 0, in allen neun" +
+                " angebundenen Repos zugleich.\n" +
+                "BEHEBUNG: in zanoria-common `./gradlew check` fahren. Das faehrt Gegenprobe" +
+                " und Selbsttest gegen den geaenderten Waechter und schreibt den Beleg neu." +
+                " Faellt dabei etwas, war die Aenderung der Fehler — nicht diese Meldung.\n" +
+                "⚠️ Beleg und Waechter gehoeren in DENSELBEN Commit.")
+        }
+        logger.lifecycle("Befehlswaechter-Beleg: belegter Stand (${gemessen}).")
+    }
+}
+
 tasks.register("befehlswaechter") {
     group = "verification"
     description = "Faengt Befehle, die deklariert oder implementiert sind und niemand anmeldet."
+
+    // ⚠️ VOR dem Waechter, nicht daneben. Laeuft der Waechter zuerst und meldet "keine Funde",
+    // hat der Leser die Gruenmeldung schon gesehen, bevor die Warnung kommt, dass sie nichts
+    // wert ist.
+    dependsOn "befehlswaechterBeleg"
 
     // ⚠️ Kein `inputs`/`outputs` und ausdruecklich kein UP-TO-DATE. Standing Rule 16, Nachtrag
     // 2026-08-07: `BUILD SUCCESSFUL > Task :x UP-TO-DATE` ist die teuerste Gruenmeldung im
