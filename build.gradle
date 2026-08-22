@@ -3,6 +3,19 @@ plugins {
     id 'maven-publish'
 }
 
+// ⚠️ Die Gegenprobe zum Befehlswaechter. Sie belegt, dass die fuenf Proben in
+// tools/befehlswaechter.py wirklich pruefen - dieser Waechter haengt in ACHT Repos, und eine
+// verrutschte Regex dort macht sie alle zugleich gruen ueber ungesehenem Befehlscode.
+// ⚠️ Kein `if (isFile())` ohne throw: eine Anbindung, die bei einem Tippfehler still aussetzt,
+// ist keine. Die Datei liegt in DIESEM Repo, sie kann nicht "berechtigt fehlen".
+def gegenprobe = file("${rootDir}/gradle/waechter-gegenprobe.gradle")
+if (!gegenprobe.isFile()) {
+    throw new GradleException(
+        "${gegenprobe} fehlt - die Gegenprobe zum Befehlswaechter waere stillschweigend weg," +
+        " und der Waechter in acht Repos damit wieder unbelegt.")
+}
+apply from: gegenprobe
+
 group = 'net.zanoria'
 version = '1.0-SNAPSHOT'
 

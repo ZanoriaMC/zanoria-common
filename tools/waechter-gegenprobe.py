@@ -27,6 +27,22 @@ vor dem Lauf gegen das Original byteweise verglichen: sind sie gleich, wurde nic
 der Fall gilt als NICHT GELAUFEN statt als bestanden.
 
 Rueckgabe: 0 alle Faelle bestanden · 1 mindestens einer gefallen · 2 es lief nichts
+
+WER RUFT DIESES SKRIPT (seit 2026-08-22)
+========================================
+``zanoria-common/gradle/waechter-gegenprobe.gradle`` haengt es an den ``check`` von
+zanoria-common. Dort steht auch, warum ZENTRAL und nicht je Verbraucher - und was diese
+Gegenprobe NICHT deckt.
+⚠️ Bis dahin rief es NICHTS. Ein Werkzeug, das niemand ruft, belegt nichts, egal was es koennte.
+
+⚠️ WAS SIE NICHT DECKT - am 2026-08-22 mit 22 Einzelmutationen gemessen: 12 rot, ZEHN still.
+Still bleiben unter anderem: jede Ueber-Meldung (es gibt hier KEINEN Fall der Gegenrichtung -
+Kommentarabtrennung aus, ``deklarierte_befehle`` leer, ``aliases`` nicht gezaehlt: alles gruen),
+halbe Toetungen (D ohne die onTabComplete-Haelfte, E ohne CommandExecutor/TabExecutor/
+TabCompleter, E ohne ``record``), die Ausnahmedatei - und die Stillegarantie des Waechters
+selbst: wird sein ``return 2`` ("NICHTS GEPRUEFT") zu ``return 0``, bleiben diese Gegenprobe UND
+``befehlswaechter.py --selbsttest`` gruen, waehrend alle acht Verbraucher einen bestandenen Lauf
+ueber null gesehene Deskriptoren melden.
 """
 
 from __future__ import annotations
