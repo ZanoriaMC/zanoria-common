@@ -168,8 +168,91 @@ tasks.register("waechterGegenprobe") {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  DER SELBSTTEST — bis zum 2026-08-22 rief ihn NIEMAND
+//  ════════════════════════════════════════════════════
+//  ⚠️ Der Kommentar weiter oben verlaesst sich an zwei Stellen woertlich darauf, dass
+//  ``befehlswaechter.py --selbsttest`` etwas faengt ("Den Kommentarfall faengt wenigstens
+//  ``befehlswaechter.py --selbsttest``"). Nur lief er in keinem Bau. Ein Werkzeug, das niemand
+//  ruft, belegt nichts, egal was es koennte — dieselbe Feststellung steht im Kopf der
+//  Gegenprobe ueber sie selbst, und sie galt danebenstehend weiter fuer den Selbsttest.
+//  ⚠️ SCHADEN konkret: der Selbsttest deckt Faelle, die die Gegenprobe ausdruecklich NICHT
+//  deckt — die Gegenrichtung (ein sauberes Plugin muss gruen sein), den Kommentarfall, und seit
+//  dem 2026-08-22 die Ausnahmen in allen drei Lagen (WEG, GEGENSTANDSLOS, UNGEPRUEFT). Wer sie
+//  hinzufuegt, ohne den Selbsttest anzubinden, schreibt eine Pflicht in Prosa und keine
+//  Maschine.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+tasks.register("waechterSelbsttest") {
+    group = "verification"
+    description = "Laesst den Befehlswaechter gegen seine eigenen Wegwerfbaeume laufen" +
+                  " (beide Richtungen, Kommentarfall, Ausnahmen)."
+
+    // ⚠️ Dieselbe Begruendung wie oben: kein UP-TO-DATE. Ein Selbsttest, den Gradle
+    // wegoptimiert, ist eine Gruenmeldung ueber einen Lauf, der nicht stattgefunden hat.
+    outputs.upToDateWhen { false }
+
+    doLast {
+        def waechterSkript = file("${project.rootDir}/tools/befehlswaechter.py")
+        if (!waechterSkript.isFile()) {
+            throw new GradleException(
+                "Waechter-Selbsttest: ${waechterSkript} fehlt. Acht Verbraucher wenden dieses" +
+                " Skript an; kein Urteil ist nicht gruen.")
+        }
+
+        def kandidaten = System.getProperty("os.name").toLowerCase().contains("win")
+                ? ["py", "python", "python3"]
+                : ["python3", "python"]
+        def interpreter = null
+        for (k in kandidaten) {
+            try {
+                def probe = new ByteArrayOutputStream()
+                def r = project.exec {
+                    commandLine k, "--version"
+                    standardOutput = probe
+                    errorOutput = probe
+                    ignoreExitValue = true
+                }
+                if (r.exitValue == 0) { interpreter = k; break }
+            } catch (ignored) { /* naechster Kandidat */ }
+        }
+        if (interpreter == null) {
+            throw new GradleException(
+                "Waechter-Selbsttest: kein Python 3 gefunden (versucht:" +
+                " ${kandidaten.join(', ')}). Er faellt NICHT auf gruen zurueck.")
+        }
+
+        def ausgabe = new ByteArrayOutputStream()
+        def ergebnis = project.exec {
+            commandLine interpreter, waechterSkript.absolutePath, "--selbsttest"
+            standardOutput = ausgabe
+            errorOutput = ausgabe
+            ignoreExitValue = true
+        }
+        def text = ausgabe.toString("UTF-8")
+        logger.lifecycle(text)
+
+        // ⚠️ Der Rueckgabecode entscheidet. Zusaetzlich muss die Schlusszeile ueberhaupt da
+        // sein: ein Skript, das vorher abstuerzt, kann jeden Code liefern, und "0 von 0
+        // bestanden" waere kein bestandener Lauf, sondern gar keiner.
+        if (!text.contains("Selbsttest:")) {
+            throw new GradleException(
+                "Waechter-Selbsttest: keine Schlusszeile 'Selbsttest: N von M bestanden' in der" +
+                " Ausgabe. Der Lauf ist abgebrochen, bevor er ein Urteil hatte.")
+        }
+        if (ergebnis.exitValue != 0) {
+            throw new GradleException(
+                "Waechter-Selbsttest: mindestens ein Fall GEFALLEN (Rueckgabe" +
+                " ${ergebnis.exitValue}) — siehe oben. Der Waechter haengt in acht Repos;" +
+                " faellt hier die Gegenrichtung, schwaerzt er dort Sauberes an, und faellt eine" +
+                " Probe, baut dort etwas gruen ueber ungesehenem Befehlscode.")
+        }
+    }
+}
+
 // ⚠️ An `check` haengen, nicht an `build`. `build` zieht `check` mit; umgekehrt nicht. Damit
 // greift sie bei `./gradlew check`, bei `./gradlew build` und in der CI dieses Repos.
 tasks.matching { it.name == "check" }.configureEach {
     dependsOn "waechterGegenprobe"
+    dependsOn "waechterSelbsttest"
 }
